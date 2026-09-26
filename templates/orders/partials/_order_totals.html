@@ -1,0 +1,19 @@
+{% load humanize %}
+{# An order's money summary: subtotal and coupon discount when there was #}
+{# one, then the total charged. Shared by every page that shows an order. #}
+<dl class="w-full space-y-1 text-sm">
+  {% if order.discount %}
+    <div class="flex justify-between gap-6">
+      <dt class="opacity-70">Subtotal</dt>
+      <dd>${{ order.subtotal|intcomma }}</dd>
+    </div>
+    <div class="flex justify-between gap-6 text-success">
+      <dt>Discount <span class="font-mono">({{ order.coupon_code }})</span></dt>
+      <dd>−${{ order.discount|intcomma }}</dd>
+    </div>
+  {% endif %}
+  <div class="flex items-baseline justify-between gap-6">
+    <dt class="uppercase tracking-wide opacity-60">Order total</dt>
+    <dd class="text-2xl font-bold text-primary">${{ order.total|intcomma }}</dd>
+  </div>
+</dl>

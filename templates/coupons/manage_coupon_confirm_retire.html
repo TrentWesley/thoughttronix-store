@@ -1,0 +1,20 @@
+{% extends "backoffice/base.html" %}
+
+{% block title %}Retire coupon — Back office{% endblock %}
+
+{% block backoffice %}
+  <div class="card mx-auto max-w-lg bg-base-100 shadow-md">
+    <div class="card-body">
+      <h2 class="card-title">Retire <span class="font-mono">{{ coupon.code }}</span>?</h2>
+      <p class="opacity-70">
+        Customers will no longer be able to use this code, and it can't be
+        brought back or reused. Orders that already used it keep their discount.
+      </p>
+      <form method="post" class="mt-4 flex justify-end gap-2">
+        {% csrf_token %}
+        <a href="{% url 'coupons:manage_coupons' %}" class="btn btn-ghost">Cancel</a>
+        <button type="submit" class="btn btn-error">Retire coupon</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}

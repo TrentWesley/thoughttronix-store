@@ -1,0 +1,40 @@
+{% extends "backoffice/base.html" %}
+
+{% block title %}
+  {% if form.instance.pk %}Edit coupon{% else %}New coupon{% endif %} — Back office
+{% endblock %}
+
+{% block backoffice %}
+  <div class="card mx-auto max-w-2xl bg-base-100 shadow-md">
+    <div class="card-body">
+      {% if form.instance.pk %}
+        {% with coupon=form.instance %}
+          <h2 class="card-title">Edit <span class="font-mono">{{ coupon.code }}</span></h2>
+          <p class="text-sm opacity-80">
+            {{ coupon.percent_off }}% off
+            {% for product in coupon.products.all %}
+              {% if forloop.first %}— {% endif %}{{ product.name }}{% if not forloop.last %}, {% endif %}
+            {% empty %}
+              the whole order
+            {% endfor %}
+          </p>
+          <p class="text-xs opacity-60">
+            Terms are fixed once created. To change the deal, retire this code and create a new one.
+          </p>
+        {% endwith %}
+      {% else %}
+        <h2 class="card-title">New coupon</h2>
+      {% endif %}
+      <form method="post" class="mt-2 space-y-4">
+        {% csrf_token %}
+        {% for field in form %}
+          {% include "products/partials/_field.html" %}
+        {% endfor %}
+        <div class="mt-2 flex items-center justify-end gap-2">
+          <a href="{% url 'coupons:manage_coupons' %}" class="btn btn-ghost">Cancel</a>
+          <button type="submit" class="btn btn-primary">Save coupon</button>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endblock %}

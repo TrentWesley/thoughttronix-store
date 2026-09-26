@@ -1,0 +1,61 @@
+{% load humanize %}
+{# The checkout's order summary, priced through Cart.priced(). Swapped into #}
+{# #order-summary by the coupon preview, which also sets oob_total to update #}
+{# the place-order button's total out-of-band. #}
+<div class="card bg-base-100 shadow-md">
+  <div class="card-body">
+    <h2 class="card-title">Your order</h2>
+
+    {% if coupon_error %}
+      <div class="alert alert-error alert-soft text-sm" role="alert">
+        <span>{{ coupon_error }}</span>
+      </div>
+    {% elif priced.coupon %}
+      <div class="alert alert-success alert-soft text-sm" role="status">
+        <span>
+          <span class="font-mono font-semibold">{{ priced.coupon.code }}</span> applied —
+          {{ priced.coupon.percent_off }}% off
+          {% if priced.coupon.is_order_wide %}your order{% else %}eligible items{% endif %}.
+        </span>
+      </div>
+    {% endif %}
+
+    <ul class="space-y-2">
+      {% for line in priced.lines %}
+        <li class="text-sm">
+          <div class="flex justify-between gap-4">
+            <span>{{ line.quantity }} × {{ line.product.name }}</span>
+            <span class="whitespace-nowrap">${{ line.line_total|intcomma }}</span>
+          </div>
+          {% if line.discount %}
+            <div class="flex justify-between gap-4 text-success">
+              <span class="pl-4">{{ priced.coupon.code }}</span>
+              <span class="whitespace-nowrap">−${{ line.discount|intcomma }}</span>
+            </div>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+    <div class="divider my-2"></div>
+    {% if priced.discount %}
+      <p class="flex justify-between text-sm">
+        <span class="opacity-70">Subtotal</span>
+        <span>${{ priced.subtotal|intcomma }}</span>
+      </p>
+      <p class="flex justify-between text-sm text-success">
+        <span>Discount</span>
+        <span>−${{ priced.discount|intcomma }}</span>
+      </p>
+    {% endif %}
+    <p class="flex justify-between font-semibold">
+      <span>Total</span>
+      <span class="text-primary">${{ priced.total|intcomma }}</span>
+    </p>
+    <a href="{% url 'orders:cart' %}" class="link link-hover text-sm opacity-70">
+      Edit cart
+    </a>
+  </div>
+</div>
+{% if oob_total %}
+  <span id="place-order-total" hx-swap-oob="true">${{ priced.total|intcomma }}</span>
+{% endif %}

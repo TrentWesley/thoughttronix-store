@@ -1,9 +1,11 @@
+from dataclasses import dataclass
 from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from coupons.models import ZERO, Coupon, CouponError
 from products.models import Product
 
 
@@ -39,6 +41,31 @@ class Cart(models.Model):
 
     def total(self):
         return sum((item.line_total for item in self.lines()), Decimal("0.00"))
+
+    def priced(self, coupon: Coupon | None = None) -> "PricedCart":
+        """The cart's lines and totals with ``coupon`` applied.
+
+        The single pricing path: the checkout page, the coupon preview,
+        and ``place_order`` all price through here, so what the customer
+        sees is what they're charged. Raises ``CouponError`` if a coupon
+        is given but discounts nothing — an order with a coupon always
+        got a discount.
+        """
+        lines = [
+            PricedLine(
+                item=item,
+                discount=(
+                    coupon.discount_for(item.product, item.line_total)
+                    if coupon
+                    else ZERO
+                ),
+            )
+            for item in self.lines()
+        ]
+        priced = PricedCart(lines=lines, coupon=coupon)
+        if coupon is not None and not priced.discount:
+            raise CouponError(f"{coupon.code} doesn't apply to anything in your cart.")
+        return priced
 
     def item_count(self):
         """Total units across all lines — the navbar badge number."""
@@ -78,12 +105,58 @@ class CartItem(models.Model):
             self.save()
 
 
+@dataclass(frozen=True)
+class PricedLine:
+    """A cart line with its share of a coupon's discount."""
+
+    item: CartItem
+    discount: Decimal
+
+    @property
+    def product(self):
+        return self.item.product
+
+    @property
+    def quantity(self):
+        return self.item.quantity
+
+    @property
+    def line_total(self):
+        return self.item.line_total
+
+    @property
+    def net_total(self):
+        return self.line_total - self.discount
+
+
+@dataclass(frozen=True)
+class PricedCart:
+    """A priced cart: lines, subtotal, discount, and what will be charged."""
+
+    lines: list[PricedLine]
+    coupon: Coupon | None = None
+
+    @property
+    def subtotal(self):
+        return sum((line.line_total for line in self.lines), ZERO)
+
+    @property
+    def discount(self):
+        return sum((line.discount for line in self.lines), ZERO)
+
+    @property
+    def total(self):
+        return self.subtotal - self.discount
+
+
 class Order(models.Model):
     """A placed order — a snapshot, never a live view of the catalog.
 
     Addresses are flat denormalized fields: the order must not change if
     the customer later edits anything. Of the card, only the last four
-    digits survive checkout.
+    digits survive checkout. A coupon is snapshotted too — its code and
+    the discount it gave — so ``total == subtotal - discount`` holds no
+    matter what later happens to the coupon.
     """
 
     class Status(models.TextChoices):
@@ -100,7 +173,17 @@ class Order(models.Model):
     status = models.CharField(
         max_length=10, choices=Status.choices, default=Status.PLACED
     )
+    subtotal = models.DecimalField(max_digits=10, decimal_places=2)
+    discount = models.DecimalField(max_digits=10, decimal_places=2, default=ZERO)
     total = models.DecimalField(max_digits=10, decimal_places=2)
+    coupon = models.ForeignKey(
+        Coupon,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="orders",
+    )
+    coupon_code = models.CharField(max_length=20, blank=True)
     email = models.EmailField()
 
     shipping_name = models.CharField(max_length=100)
@@ -137,8 +220,8 @@ class Order(models.Model):
 class OrderItem(models.Model):
     """One line of an order, priced as of purchase time.
 
-    Name and unit price are denormalized: order history must not change
-    when the catalog does. The product FK survives for linking while the
+    Name, unit price, and coupon discount are denormalized: order history
+    must not change when the catalog or a coupon does. The product FK survives for linking while the
     product exists.
     """
 
@@ -147,6 +230,7 @@ class OrderItem(models.Model):
     product_name = models.CharField(max_length=200)
     unit_price = models.DecimalField(max_digits=10, decimal_places=2)
     quantity = models.PositiveIntegerField()
+    discount = models.DecimalField(max_digits=10, decimal_places=2, default=ZERO)
 
     class Meta:
         ordering = ["pk"]
@@ -156,4 +240,10 @@ class OrderItem(models.Model):
 
     @property
     def line_total(self):
+        """Before any coupon discount."""
         return self.unit_price * self.quantity
+
+    @property
+    def net_total(self):
+        """What was actually charged for the line."""
+        return self.line_total - self.discount

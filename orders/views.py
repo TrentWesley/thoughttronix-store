@@ -4,7 +4,9 @@ The three HTMX interactions of the core live here: add-to-cart, quantity
 change, and line removal. Each renders a partial (never ``base.html``);
 the responses carry the navbar badge as an out-of-band swap via the
 ``oob_badge`` context flag. Checkout is conventional full-page work:
-validate the form, hand everything to ``place_order``.
+validate the form, hand everything to ``place_order``. Its one HTMX
+extra is the coupon preview, which re-prices the order summary and
+stores nothing — ``place_order`` re-checks the code when it counts.
 """
 
 from django.contrib import messages
@@ -15,6 +17,7 @@ from django.views import View
 from django.views.generic import DetailView, FormView, ListView, TemplateView
 
 from accounts.mixins import StaffRequiredMixin
+from coupons.models import Coupon, CouponError
 from products.models import Product
 
 from .forms import CheckoutForm, OrderStatusForm
@@ -85,6 +88,20 @@ class RemoveCartItemView(CartItemActionView):
         item.delete()
 
 
+def price_with_code(cart, code):
+    """Price ``cart`` with a typed coupon code, for display.
+
+    Returns ``(priced, error)``: a code that can't be used prices the
+    cart without it and hands back the readable reason instead.
+    """
+    if not code.strip():
+        return cart.priced(), None
+    try:
+        return cart.priced(Coupon.objects.redeem(code)), None
+    except CouponError as error:
+        return cart.priced(), str(error)
+
+
 class CheckoutView(LoginRequiredMixin, FormView):
     """The single checkout page: validate the form, hand off to the service.
 
@@ -118,14 +135,45 @@ class CheckoutView(LoginRequiredMixin, FormView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["cart"] = Cart.for_user(self.request.user)
+        form = context["form"]
+        code = (form["coupon_code"].value() or "") if form.is_bound else ""
+        # A bad code's reason is already shown on the field itself.
+        context["priced"], _ = price_with_code(Cart.for_user(self.request.user), code)
         return context
 
     def form_valid(self, form):
         cart = Cart.for_user(self.request.user)
-        order = place_order(cart, self.request.user, form.cleaned_data)
+        try:
+            order = place_order(
+                cart,
+                self.request.user,
+                form.cleaned_data,
+                coupon_code=form.cleaned_data["coupon_code"] or None,
+            )
+        except CouponError as error:
+            # Never charge a total the customer didn't see: block the
+            # order and put the reason on the coupon field.
+            form.add_error("coupon_code", str(error))
+            return self.form_invalid(form)
         messages.success(self.request, f"Order {order.number} placed. Thank you!")
         return redirect(reverse("orders:confirmation", kwargs={"pk": order.pk}))
+
+
+class CouponPreviewView(LoginRequiredMixin, View):
+    """HTMX: re-price the checkout summary with the typed coupon code.
+
+    Stateless — the code stays in the form field, and nothing about it is
+    saved. The place-order button's total updates out-of-band.
+    """
+
+    def post(self, request):
+        code = request.POST.get("coupon_code", "")
+        priced, error = price_with_code(Cart.for_user(request.user), code)
+        return render(
+            request,
+            "orders/partials/_order_summary.html",
+            {"priced": priced, "coupon_error": error, "oob_total": True},
+        )
 
 
 class OwnOrdersMixin(LoginRequiredMixin):

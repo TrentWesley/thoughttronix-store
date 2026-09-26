@@ -9,6 +9,7 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth import get_user_model
 
+from coupons.models import Coupon
 from orders.models import Cart, CartItem
 from products.models import Category, Product, Tag
 
@@ -48,6 +49,16 @@ def product(category):
 
 
 @pytest.fixture
+def other_product(category):
+    return Product.objects.create(
+        name="Charging Pillow",
+        slug="charging-pillow",
+        price=Decimal("69.00"),
+        category=category,
+    )
+
+
+@pytest.fixture
 def unavailable_product(category):
     return Product.objects.create(
         name="EchoPatch",
@@ -72,3 +83,17 @@ def cart(customer):
 @pytest.fixture
 def cart_item(cart, product):
     return CartItem.objects.create(cart=cart, product=product, quantity=2)
+
+
+@pytest.fixture
+def coupon(db):
+    """An order-wide 10%-off coupon that never expires."""
+    return Coupon.objects.create(code="THOUGHTS10", percent_off=10)
+
+
+@pytest.fixture
+def product_coupon(product):
+    """20% off the Seraphine Home Hub only."""
+    coupon = Coupon.objects.create(code="HUB20", percent_off=20)
+    coupon.products.add(product)
+    return coupon

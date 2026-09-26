@@ -36,7 +36,14 @@
             </td>
             <td>${{ item.unit_price|intcomma }}</td>
             <td>{{ item.quantity }}</td>
-            <td class="text-right font-semibold">${{ item.line_total|intcomma }}</td>
+            <td class="text-right font-semibold">
+              ${{ item.line_total|intcomma }}
+              {% if item.discount %}
+                <p class="text-xs font-normal text-success">
+                  −${{ item.discount|intcomma }} with {{ order.coupon_code }}
+                </p>
+              {% endif %}
+            </td>
           </tr>
         {% endfor %}
       </tbody>
@@ -56,9 +63,8 @@
       </div>
     </div>
     <div class="card bg-base-100 shadow-md">
-      <div class="card-body items-end justify-center">
-        <p class="text-sm uppercase tracking-wide opacity-60">Order total</p>
-        <p class="text-3xl font-bold text-primary">${{ order.total|intcomma }}</p>
+      <div class="card-body justify-center">
+        {% include "orders/partials/_order_totals.html" %}
       </div>
     </div>
   </div>

@@ -28,6 +28,7 @@ def make_order(user, total, *, days_ago=0, status=Order.Status.PLACED):
     return Order.objects.create(
         user=user,
         status=status,
+        subtotal=Decimal(total),
         total=Decimal(total),
         email="casey@example.com",
         shipping_name="Casey Monroe",
@@ -45,13 +46,14 @@ def make_order(user, total, *, days_ago=0, status=Order.Status.PLACED):
     )
 
 
-def add_item(order, name, unit_price, quantity=1):
+def add_item(order, name, unit_price, quantity=1, discount="0.00"):
     return OrderItem.objects.create(
         order=order,
         product=None,
         product_name=name,
         unit_price=Decimal(unit_price),
         quantity=quantity,
+        discount=Decimal(discount),
     )
 
 
@@ -175,6 +177,13 @@ def test_top_products_rank_by_revenue_not_units(customer):
         "revenue": Decimal("70.00"),
         "units": 5,
     }
+
+
+def test_top_products_revenue_is_net_of_coupon_discounts(customer):
+    order = make_order(customer, "0.00")
+    add_item(order, "MindSync Solo", "899.00", discount="89.90")
+
+    assert queries.top_products()[0]["revenue"] == Decimal("809.10")
 
 
 def test_top_products_merge_lines_across_orders(customer):

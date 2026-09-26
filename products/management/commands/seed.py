@@ -21,6 +21,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
 
+from coupons.models import Coupon
 from orders.models import Cart, Order, OrderItem
 from products.models import Category, Product, Tag
 
@@ -496,15 +497,33 @@ SEED_ADDRESSES = [
 
 CARD_LAST4S = ["4242", "4111", "1881", "0005"]
 
+# One coupon in each state, to try at checkout: (code, percent off,
+# product slugs — empty for order-wide, expires in days — None for
+# never, negative for already expired, retired?). No seeded order uses
+# them; "Times used" starts at zero.
+COUPONS = [
+    ("THOUGHTS10", 10, [], None, False),
+    (
+        "SMARTHOME20",
+        20,
+        ["seraphine", "seraphine-mini", "seraphine-doorbell"],
+        90,
+        False,
+    ),
+    ("SUMMER25", 25, [], -30, False),
+    ("LAUNCH15", 15, [], None, True),
+]
+
 
 class Command(BaseCommand):
-    help = "Wipe and rebuild the demo world: catalog, tags, and demo accounts."
+    help = "Wipe and rebuild the demo world: catalog, tags, coupons, and demo accounts."
 
     @transaction.atomic
     def handle(self, *args, **options):
         self._wipe()
         tags = self._create_tags()
         self._create_catalog(tags)
+        self._create_coupons()
         self._create_users()
         self._create_customer_cart()
         self._create_orders()
@@ -514,6 +533,7 @@ class Command(BaseCommand):
                 f"Seeded {Category.objects.count()} categories, "
                 f"{Tag.objects.count()} tags, "
                 f"{Product.objects.count()} products, "
+                f"{Coupon.objects.count()} coupons, "
                 f"{get_user_model().objects.count()} users, "
                 f"{Order.objects.count()} orders, "
                 f"and a live cart for 'customer'."
@@ -523,6 +543,7 @@ class Command(BaseCommand):
     def _wipe(self):
         """Remove everything the seed owns; the rebuild starts from zero."""
         Order.objects.all().delete()
+        Coupon.objects.all().delete()  # after orders: they PROTECT coupons
         Cart.objects.all().delete()
         Product.objects.all().delete()
         Tag.objects.all().delete()
@@ -554,6 +575,22 @@ class Command(BaseCommand):
                     category=category,
                 )
                 product.tags.set(tags[tag_name] for tag_name in tag_names)
+
+    def _create_coupons(self):
+        today = timezone.localdate()
+        for code, percent_off, slugs, expires_in, retired in COUPONS:
+            coupon = Coupon.objects.create(
+                code=code,
+                percent_off=percent_off,
+                expires_on=(
+                    today + timedelta(days=expires_in)
+                    if expires_in is not None
+                    else None
+                ),
+            )
+            coupon.products.set(Product.objects.filter(slug__in=slugs))
+            if retired:
+                coupon.retire()
 
     def _create_users(self):
         User = get_user_model()
@@ -648,13 +685,15 @@ class Command(BaseCommand):
         """One order with denormalized addresses and purchase-time prices."""
         street, city, state, zip_code = rng.choice(SEED_ADDRESSES)
         name = f"{user.first_name} {user.last_name}"
+        total = sum(
+            (product.price * quantity for product, quantity in lines),
+            Decimal("0.00"),
+        )
         order = Order.objects.create(
             user=user,
             status=status,
-            total=sum(
-                (product.price * quantity for product, quantity in lines),
-                Decimal("0.00"),
-            ),
+            subtotal=total,
+            total=total,
             email=user.email,
             shipping_name=name,
             shipping_street=street,

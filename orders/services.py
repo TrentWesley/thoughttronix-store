@@ -11,6 +11,8 @@ from typing import Any
 from django.contrib.auth.models import AbstractBaseUser
 from django.db import transaction
 
+from coupons.models import Coupon
+
 from .models import Cart, Order, OrderItem
 
 ADDRESS_FIELDS = [
@@ -46,11 +48,17 @@ def place_order(
     only the last four digits are stored; the full number and CVV never
     touch the database.
 
+    ``coupon_code``, if given, is redeemed here — inside the transaction,
+    so this is the check that counts, however long ago the customer
+    previewed it. The coupon's code and the per-line discounts it gave
+    are snapshotted onto the order and its items.
+
     All-or-nothing: runs in a transaction, so a failure partway through
     leaves no partial order and the cart intact.
 
     Raises ``ValueError`` if the cart is empty or holds a product that is
-    no longer available.
+    no longer available, and its subclass ``CouponError`` (with a message
+    fit for the customer) if the coupon can't be used on this cart.
     """
     lines = list(cart.lines())
     if not lines:
@@ -62,20 +70,28 @@ def place_order(
             "Remove them from the cart to check out."
         )
 
+    coupon = Coupon.objects.redeem(coupon_code) if coupon_code else None
+    priced = cart.priced(coupon)
+
     card_digits = checkout_data["card_number"].replace(" ", "").replace("-", "")
     order = Order.objects.create(
         user=user,
-        total=cart.total(),
+        subtotal=priced.subtotal,
+        discount=priced.discount,
+        total=priced.total,
+        coupon=coupon,
+        coupon_code=coupon.code if coupon else "",
         card_last4=card_digits[-4:],
         **{name: checkout_data[name] for name in ADDRESS_FIELDS},
     )
-    for line in lines:
+    for line in priced.lines:
         OrderItem.objects.create(
             order=order,
             product=line.product,
             product_name=line.product.name,
             unit_price=line.product.price,
             quantity=line.quantity,
+            discount=line.discount,
         )
     cart.items.all().delete()
     return order

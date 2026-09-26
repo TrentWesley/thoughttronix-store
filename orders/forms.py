@@ -5,10 +5,17 @@ annotations: field types validate (``EmailField``), field arguments
 validate (``required``, ``max_length``, ``ChoiceField``), and the
 ``validators=[...]`` list carries the rest. No ``clean_*`` methods
 and no ``clean()`` — none of its current rules need imperative validation.
+
+The optional ``coupon_code`` follows suit: its validator rejects unknown,
+expired, and retired codes. The one coupon rule that needs the cart — a
+product-limited coupon matching nothing in it — surfaces from
+``place_order``, and the view attaches it to this same field.
 """
 
 from django import forms
 from django.core.validators import RegexValidator
+
+from coupons.validators import validate_coupon_code
 
 from .models import Order
 from .validators import validate_card_number, validate_expiry
@@ -108,6 +115,13 @@ class CheckoutForm(forms.Form):
     )
     card_cvv = forms.CharField(label="CVV", max_length=4, validators=[cvv_validator])
 
+    coupon_code = forms.CharField(
+        label="Discount code (optional)",
+        max_length=30,
+        required=False,
+        validators=[validate_coupon_code],
+    )
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
@@ -116,6 +130,9 @@ class CheckoutForm(forms.Form):
                 widget.attrs["class"] = "select w-full"
             else:
                 widget.attrs["class"] = "input w-full"
+        self.fields["coupon_code"].widget.attrs.update(
+            {"class": "input join-item w-full uppercase", "autocomplete": "off"}
+        )
 
     # Field groups for the template — the form owns its own structure.
 
