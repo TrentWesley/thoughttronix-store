@@ -28,6 +28,18 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-09-27 — Commit the coupon product checkbox selector, plus session log
+
+### Prompts
+1. "Run uv run python manage.py tailwind runserver"
+2. "The improved Products checkbox selector looks correct in the browser. Commit and push this post-review improvement with a descriptive commit message. Do not make any additional code changes."
+3. "Write this session log to PROMPTS.md using the standard prompt in the PROMPTS.md header."
+
+### Summary
+- **Outcome:** Started the dev server with Tailwind watch in the background and confirmed that the home page returned HTTP 200. After the user checked the Products checkbox selector in the browser, the three changes already in the working tree were committed as `ab28359` ("Use labeled checkboxes for coupon product selection") and pushed to `origin/main`. Those changes were in `coupons/forms.py`, `coupons/test_backoffice.py`, and `templates/products/partials/_field.html`. No code was written or edited in this session. The only file changed was this one, by prompt 3.
+- **Deviations:** None. No recommendations were made or overridden, and no follow-up questions were asked. The commit went straight to `main`, which matches the earlier commits.
+- **Sideways:** Nothing failed. The dev server's log file was still empty right after it started, so the agent confirmed the server was up by requesting the page instead. Before committing, the agent ran the full test suite (232 passed); this wasn't asked for, and it changed no code. The checkbox selector itself was built in an earlier session whose prompts aren't recorded here, and neither is the coupon feature from `fe75948`.
+
 ## 2026-09-20 — Featured products, plus session log
 
 ### Prompts
