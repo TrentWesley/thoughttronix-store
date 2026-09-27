@@ -105,6 +105,60 @@ def test_staff_can_create_a_product_limited_coupon(client, staff_user, product):
     assert list(coupon.products.all()) == [product]
 
 
+def test_products_are_offered_as_one_labeled_checkbox_each(
+    client, staff_user, product, other_product
+):
+    client.force_login(staff_user)
+
+    response = client.get(reverse("coupons:manage_coupon_create"))
+
+    html = response.content.decode()
+    assert '<select name="products"' not in html
+    # One row per product, in name order, each label tied to its checkbox.
+    for i, item in enumerate([other_product, product]):
+        assert f'type="checkbox" name="products" value="{item.pk}"' in html
+        assert f'id="id_products_{i}"' in html
+        assert f'for="id_products_{i}"' in html
+    assert html.index(other_product.name) < html.index(product.name)
+
+
+def test_the_product_list_has_an_empty_state(client, staff_user):
+    client.force_login(staff_user)
+
+    response = client.get(reverse("coupons:manage_coupon_create"))
+
+    assert "Nothing to choose from yet." in response.content.decode()
+
+
+def test_staff_can_limit_a_coupon_to_several_products(
+    client, staff_user, product, other_product
+):
+    client.force_login(staff_user)
+
+    response = client.post(
+        reverse("coupons:manage_coupon_create"),
+        {
+            "code": "PAIR10",
+            "percent_off": "10",
+            "products": [str(product.pk), str(other_product.pk)],
+        },
+    )
+
+    assert response.status_code == HTTPStatus.FOUND
+    assert set(Coupon.objects.get().products.all()) == {product, other_product}
+
+
+def test_a_coupon_with_no_products_ticked_is_order_wide(client, staff_user, product):
+    client.force_login(staff_user)
+
+    client.post(
+        reverse("coupons:manage_coupon_create"),
+        {"code": "ALL10", "percent_off": "10"},
+    )
+
+    assert Coupon.objects.get().is_order_wide
+
+
 def test_a_duplicate_code_is_rejected_whatever_its_case(client, staff_user, coupon):
     client.force_login(staff_user)
 

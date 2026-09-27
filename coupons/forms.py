@@ -40,9 +40,12 @@ class CouponCreateForm(ExpiryMixin, StyledModelForm):
         max_length=30,
         help_text="Letters and digits; saved in uppercase. Can't be changed later.",
     )
+    # Checkboxes, not a multi-select: one readable row per product, and
+    # no ctrl-click to pick several.
     products = forms.ModelMultipleChoiceField(
         queryset=Product.objects.order_by("name"),
         required=False,
+        widget=forms.CheckboxSelectMultiple,
         help_text=Coupon._meta.get_field("products").help_text,
     )
 
@@ -50,6 +53,12 @@ class CouponCreateForm(ExpiryMixin, StyledModelForm):
         model = Coupon
         fields = ["code", "percent_off", "products", "expires_on"]
         widgets = {"expires_on": EXPIRY_WIDGET}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["products"].widget.attrs["class"] = (
+            "checkbox checkbox-primary checkbox-sm"
+        )
 
 
 class CouponExpiryForm(ExpiryMixin, StyledModelForm):
