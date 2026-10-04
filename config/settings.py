@@ -137,6 +137,14 @@ STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "assets"]
 
 
+# User-uploaded media (product images), on the local filesystem.
+# Served by Django itself only while DEBUG is on (see config/urls.py).
+
+MEDIA_URL = "media/"
+
+MEDIA_ROOT = env.path("MEDIA_ROOT", default=BASE_DIR / "media")
+
+
 # Tailwind CSS + DaisyUI (django-tailwind-cli, standalone binary — no Node.js)
 
 TAILWIND_CLI_USE_DAISY_UI = True

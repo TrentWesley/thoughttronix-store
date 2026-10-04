@@ -1,6 +1,9 @@
 {# One back-office form field: label, widget, and its errors beside it. #}
 {# Checkboxes render inline with their label (a DaisyUI toggle); a list of #}
-{# checkboxes renders as a scrollable fieldset, one row per choice. #}
+{# checkboxes renders as a scrollable fieldset, one row per choice. An image #}
+{# field shows a thumbnail of the current image, a file input to replace it, #}
+{# and Django's "clear" checkbox (named <field>-clear, as ClearableFileInput #}
+{# expects). #}
 <div>
   {% if field.widget_type == "checkbox" %}
     <label class="label cursor-pointer justify-start gap-3" for="{{ field.id_for_label }}">
@@ -20,6 +23,34 @@
         {% empty %}
           <p class="px-3 py-2 text-sm opacity-60">Nothing to choose from yet.</p>
         {% endfor %}
+      </div>
+    </fieldset>
+  {% elif field.widget_type == "clearablefile" %}
+    <fieldset>
+      <legend class="label mb-1">{{ field.label }}</legend>
+      <div class="flex items-start gap-4">
+        {% if field.initial %}
+          <a href="{{ field.initial.url }}" target="_blank" rel="noopener" class="shrink-0">
+            <img src="{{ field.initial.url }}" alt="Current image"
+                 class="aspect-[4/5] w-24 rounded-box border border-base-300 object-cover" />
+          </a>
+        {% else %}
+          <div class="flex aspect-[4/5] w-24 shrink-0 items-center justify-center rounded-box border border-dashed border-base-300 p-2 text-center text-xs opacity-60">
+            Category placeholder
+          </div>
+        {% endif %}
+        <div class="min-w-0 flex-1 space-y-2">
+          <input type="file" name="{{ field.html_name }}" id="{{ field.id_for_label }}"
+                 accept="{{ field.field.widget.attrs.accept }}"
+                 class="{{ field.field.widget.attrs.class }}" />
+          {% if field.initial %}
+            <label class="label cursor-pointer justify-start gap-2" for="{{ field.html_name }}-clear_id">
+              <input type="checkbox" name="{{ field.html_name }}-clear" id="{{ field.html_name }}-clear_id"
+                     class="checkbox checkbox-sm" />
+              <span class="text-sm">Remove image (show the category placeholder)</span>
+            </label>
+          {% endif %}
+        </div>
       </div>
     </fieldset>
   {% else %}

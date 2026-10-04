@@ -26,10 +26,18 @@ class StyledModelForm(forms.ModelForm):
                 widget.attrs["class"] = "textarea w-full"
                 widget.attrs.setdefault("rows", 6)
             elif isinstance(widget, forms.SelectMultiple):
-                widget.attrs["class"] = "select h-auto w-full"
+                # Not DaisyUI's ``select``: it lays a control out as one
+                # inline-flex row, which runs a list box's options together.
+                widget.attrs["class"] = (
+                    "w-full rounded-field border border-base-content/20 "
+                    "bg-base-100 p-1 [&>option]:rounded-field "
+                    "[&>option]:px-3 [&>option]:py-1.5"
+                )
                 widget.attrs.setdefault("size", 8)
             elif isinstance(widget, forms.Select):
                 widget.attrs["class"] = "select w-full"
+            elif isinstance(widget, forms.FileInput):
+                widget.attrs["class"] = "file-input w-full"
             else:
                 widget.attrs["class"] = "input w-full"
 
@@ -53,7 +61,13 @@ class ProductForm(StyledModelForm):
             "category",
             "tags",
             "is_available",
+            "image",
         ]
+        widgets = {
+            "image": forms.ClearableFileInput(
+                attrs={"accept": "image/jpeg,image/png,image/webp"}
+            ),
+        }
 
 
 class CategoryForm(StyledModelForm):

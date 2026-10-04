@@ -5,13 +5,44 @@ grows with the project; tests never invoke the seed command.
 """
 
 from decimal import Decimal
+from io import BytesIO
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
+from PIL import Image
 
 from coupons.models import Coupon
 from orders.models import Cart, CartItem
 from products.models import Category, Product, Tag
+
+
+@pytest.fixture(autouse=True)
+def media_root(settings, tmp_path):
+    """Every test writes uploads to a throwaway MEDIA_ROOT, never ./media."""
+    settings.MEDIA_ROOT = tmp_path / "media"
+    return settings.MEDIA_ROOT
+
+
+@pytest.fixture
+def image_upload():
+    """Build an in-memory image upload with Pillow.
+
+    ``image_upload(size=(800, 1000), fmt="PNG", orientation=6)`` returns a
+    ``SimpleUploadedFile``; ``orientation`` writes an EXIF orientation tag.
+    """
+
+    def build(size=(800, 1000), fmt="PNG", name=None, orientation=None):
+        image = Image.new("RGB", size, "#7c3aed")
+        exif = Image.Exif()
+        if orientation is not None:
+            exif[0x0112] = orientation
+        buffer = BytesIO()
+        image.save(buffer, format=fmt, exif=exif.tobytes())
+        name = name or f"upload.{fmt.lower()}"
+        return SimpleUploadedFile(name, buffer.getvalue())
+
+    return build
 
 
 @pytest.fixture

@@ -1,9 +1,18 @@
-from django.db import models
+from django.db import models, transaction
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
+from django.templatetags.static import static
 from django.urls import reverse
 
+from .images import (
+    ProductImageField,
+    normalize_product_image,
+    validate_product_image,
+)
+
 # Categories with a dedicated placeholder illustration; anything else
-# falls back to default.svg. No media handling in the core — placeholder
-# images are static files chosen by category.
+# falls back to default.svg. A product without an uploaded image shows its
+# category's placeholder, a static file chosen here.
 PLACEHOLDER_CATEGORIES = {
     "home-assistants",
     "neural-implants",
@@ -72,6 +81,16 @@ class Product(models.Model):
         related_name="products",
     )
     tags = models.ManyToManyField(Tag, blank=True, related_name="products")
+    image = ProductImageField(
+        upload_to="products/",
+        max_length=255,
+        blank=True,
+        validators=[validate_product_image],
+        help_text=(
+            "Optional. A JPEG, PNG, or WebP image, up to 5 MB and at least "
+            "600 pixels on its shortest side."
+        ),
+    )
 
     objects = ProductQuerySet.as_manager()
 
@@ -81,5 +100,58 @@ class Product(models.Model):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        """Normalize a newly uploaded image; remove a replaced or cleared one.
+
+        Only a fresh upload — a file not yet committed to storage — is
+        normalized, so editing price, tags, or any other field never
+        reprocesses an existing image. The old file is deleted only after
+        the transaction commits, so a failed save never loses it.
+        """
+        if self.image and not self.image._committed:
+            self.image = normalize_product_image(self.image, self.slug)
+
+        update_fields = kwargs.get("update_fields")
+        stored_name = ""
+        if not self._state.adding and (
+            update_fields is None or "image" in update_fields
+        ):
+            stored_name = (
+                type(self)
+                ._default_manager.filter(pk=self.pk)
+                .values_list("image", flat=True)
+                .first()
+                or ""
+            )
+
+        super().save(*args, **kwargs)
+
+        if stored_name and stored_name != self.image.name:
+            delete_image_file_on_commit(self.image.storage, stored_name)
+
     def get_absolute_url(self):
         return reverse("products:detail", kwargs={"slug": self.slug})
+
+    @property
+    def image_url(self):
+        """The uploaded image's URL, or the category placeholder's when there is none."""
+        if self.image:
+            return self.image.url
+        return static(self.category.placeholder_image)
+
+
+def delete_image_file_on_commit(storage, name):
+    """Delete a stored image once the surrounding transaction commits."""
+    transaction.on_commit(lambda: storage.delete(name))
+
+
+@receiver(post_delete, sender=Product)
+def delete_product_image(sender, instance, **kwargs):
+    """Remove a deleted product's image file.
+
+    A signal rather than a ``delete()`` override, because bulk queryset
+    deletes (such as the seed command's) skip ``Model.delete()`` but still
+    send ``post_delete``.
+    """
+    if instance.image:
+        delete_image_file_on_commit(instance.image.storage, instance.image.name)
