@@ -1,4 +1,35 @@
 # Reflection
+
+## Product Images
+
+### Question 1
+During /grill-me, Claude recommended having the seed command automatically attach the provided images to products. I decided not to do that because I wanted the seed data to stay unchanged and upload the images myself through the back office. We discussed the options and I chose to keep the product-images folder temporary and uncommitted. This also allowed me to test the actual image upload process myself.
+
+### Question 2
+The product image field is in products/models.py on lines 84-93:
+
+image = ProductImageField(
+    upload_to="products/",
+    max_length=255,
+    blank=True,
+    validators=[validate_product_image],
+    help_text=(
+        "Optional. A JPEG, PNG, or WebP image, up to 5 MB and at least "
+        "600 pixels on its shortest side."
+    ),
+)
+
+The upload_to="products/" value is on line 85. The field uses ProductImageField, which is a subclass of Django's ImageField. The upload_to setting tells Django to store product images inside the products folder in the media directory.
+
+The opening form tag is in templates/products/manage_product_form.html on line 13:
+
+<form method="post" enctype="multipart/form-data" class="mt-2 space-y-4">
+
+The enctype="multipart/form-data" is needed so the browser can send the uploaded image file with the rest of the form data.
+
+### Question 3
+For my FocusForge product, the database stores products/focusforge-c4641c.webp. The actual image file is stored at media/products/focusforge-c4641c.webp, and the browser accesses it at /media/products/focusforge-c4641c.webp. MEDIA_ROOT in config/settings.py on line 145 controls where the uploaded file is stored, while MEDIA_URL on line 143 provides the /media/ part of the browser URL. The image field stores the relative path in the database, and the image_url property in products/models.py on lines 135-140 returns the uploaded image URL. In development, config/urls.py on lines 22-23 uses Django's static() helper when DEBUG is on so the browser can access uploaded files from MEDIA_ROOT.
+
 ## Discount Coupons
 
 ### Question 1
