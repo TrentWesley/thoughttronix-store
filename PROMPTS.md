@@ -28,6 +28,45 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-11 — Account Security Center Phase 2: case-insensitive unique email constraint, normalization helper, required signup email
+
+### Prompts
+1. "@prd/account-security.md @plans/account-security.md Do Phase 2. Follow the approved Phase 2 plan and its acceptance criteria exactly. [Safety requirements: before applying any migration, check both the current development database and the committed `db.sqlite3` snapshot for case-insensitive duplicate nonblank emails; if any exist, stop and report them; don't silently modify or delete accounts; don't reset, reseed, restore, or overwrite `db.sqlite3`; preserve blank-email accounts; implement the shared normalization and uniqueness rules; require and validate email at signup; use the planned constraint and migration.] Implement ONLY Phase 2. Do not start Phase 3. Run: uv run pytest, uv run ruff check ., uv run ruff format --check . Report the changes, test results, migration status, and any issues. When finished, explain how I can manually verify Phase 2 in the browser. Do not commit or push. Wait for my review and approval."
+2. "Phase 2 is approved after manual browser verification. [The user listed six checks they did themselves, and one failed sign-in attempt; both are recorded under Summary.] Update PROMPTS.md with an accurate Phase 2 session log, following the existing format. Include the implementation, database safety checks, 287 passing tests, Ruff results, manual verification, and actual issues encountered. Do not invent any corrections or prompts. Do not modify application code. Do not commit or push yet. Show me the new PROMPTS.md entry and git status."
+
+### Summary
+- **Outcome:**
+  - **Database safety checks:** before any migration was written or applied, both databases were checked read-only for nonblank emails that collide when capitalization is ignored, and also when surrounding whitespace is trimmed. The committed snapshot was checked through a scratch copy extracted with `git show HEAD:db.sqlite3`.
+    - **Dev DB** (working-copy `db.sqlite3`): 13 users, 1 blank email (`noemail`), no duplicates.
+    - **Committed snapshot:** 12 users, 0 blank emails, no duplicates.
+    - The dev DB was checked again immediately before migrating and once more afterward, with the same result. No account was edited, blanked, or deleted, and `db.sqlite3` was never reseeded, reset, restored, or overwritten.
+  - **Implementation:**
+    - **`accounts/models.py`:** a `UniqueConstraint` on `Lower("email")` named `accounts_user_email_ci_unique`, with the condition `~Q(email="")` so blank emails are excluded. `User.Meta` inherits `AbstractUser.Meta`. A `User.normalize_recovery_email()` classmethod trims whitespace and then applies Django's `normalize_email`. `email` stays optional at the model level.
+    - **`accounts/migrations/0002_email_ci_unique.py`:** one migration with a single `AddConstraint`. `makemigrations --check` reported no further changes.
+    - **`accounts/forms.py`:** `SignupForm` gains a required `email` field. It normalizes the address, rejects one already in use regardless of capitalization with "That email address already belongs to another account.", and keeps the `input w-full` styling. The docstring no longer says signup asks for no email. The signup template already loops over every field, so it was unchanged.
+    - **Tests:** in `accounts/test_signup.py`, the existing happy-path and password-mismatch tests now post an email. New tests cover the required field, blank and whitespace-only emails, `  Sam@Example.COM  ` stored as `Sam@example.com`, and a case-variant duplicate producing exactly one friendly field error with no non-field error. A new `accounts/test_email.py` covers the normalization helper, `IntegrityError` on case-variant duplicates through both create and update with forms bypassed, and several blank-email accounts coexisting.
+  - **Migration verification:**
+    - **Fresh-seeded scratch DB:** migrated to `accounts 0001`, seeded, given two extra blank-email users (three in total), then migrated. `0002` applied cleanly, and `seed` succeeded twice in a row afterward. `MEDIA_ROOT` was pointed at the scratchpad for this run.
+    - **Scratch copy of the committed snapshot:** `0002` applied cleanly. The committed file itself was not touched.
+    - **Dev DB:** `0002` applied. `showmigrations accounts` shows both `0001` and `0002` applied.
+  - **Automated checks:** `uv run pytest` passed 287 tests. `uv run ruff check .` reported "All checks passed!", and `uv run ruff format --check .` reported 69 files already formatted.
+  - **Manual browser verification (done by the user):**
+    1. The signup form displays an email field.
+    2. Signup is blocked when the email is blank.
+    3. The `phase2test` account was created successfully.
+    4. Its email was saved as `Sam@example.com`.
+    5. Signup with `sam@EXAMPLE.com` was rejected as a duplicate.
+    6. The existing `noemail` account still displays the add-email reminder.
+  - Phase 3 was not started. Nothing was committed or pushed. `db.sqlite3` remains locally modified: it already had changes before this session, and it now also has `0002` applied and the `phase2test` account.
+- **Deviations:**
+  - None from the plan's acceptance criteria. The user approved Phase 2 without asking for corrections.
+  - The normalization helper was placed on `User` as a classmethod rather than on a custom manager (the plan allows either). A manager subclass would have added an `AlterModelManagers` operation and broken the one-migration rule.
+- **Sideways:**
+  - The first generated migration also contained an `AlterModelOptions(options={})`, because the new `class Meta:` didn't inherit `AbstractUser.Meta` and so dropped the model's verbose names. This was caught by reading the migration before applying it. The migration was deleted, `Meta` was changed to inherit `AbstractUser.Meta`, and the regenerated migration contains only the `AddConstraint`. The flawed version was never applied to any database.
+  - A side effect was reported to the user rather than reverted: Django's model validation checks constraints, so the Django admin now shows "An account with that email address already exists." for a duplicate instead of raising an `IntegrityError`. The PRD says admin behavior is unchanged. The user did not ask for any change.
+  - Minor tooling hiccups during investigation: an `ls` of a nonexistent `accounts/tests/` directory, and a one-off `python -c` that imported Django auth without configured settings. Neither affected the work.
+  - During the user's manual verification, one sign-in attempt failed because the username/password capitalization differed. Signing in with the correct credentials worked, and no application fix was needed.
+
 ## 2026-10-11 — Account Security Center Phase 1: Security Center hub, navbar link, noemail seed account, split accounts tests
 
 ### Prompts
