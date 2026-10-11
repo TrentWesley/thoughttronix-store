@@ -63,6 +63,21 @@ def staff_user(db):
 
 
 @pytest.fixture
+def customer_with_email(db):
+    """A plain customer with a recovery address on file."""
+    return get_user_model().objects.create_user(
+        username="casey", password="casey12345", email="casey@example.com"
+    )
+
+
+@pytest.fixture
+def superuser(db):
+    return get_user_model().objects.create_superuser(
+        username="admin", password="admin123", email="admin@example.com"
+    )
+
+
+@pytest.fixture
 def category(db):
     return Category.objects.create(name="Home Assistants", slug="home-assistants")
 

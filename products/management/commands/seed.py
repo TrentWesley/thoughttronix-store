@@ -448,6 +448,8 @@ DEMO_USERS = [
         False,
         None,
     ),
+    # No email on file: demonstrates the Security Center's add-email reminder.
+    ("noemail", "noemail123", "", "Noel", "Mayle", False, False, None),
 ]
 
 # Background customers flesh out the demo world; they get order history in

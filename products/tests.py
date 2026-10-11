@@ -239,6 +239,11 @@ def test_seed_builds_the_demo_world(db):
     assert customer.cart.item_count() == 4
     assert customer.orders.count() == 4
 
+    noemail = User.objects.get(username="noemail")
+    assert noemail.check_password("noemail123")
+    assert noemail.email == ""
+    assert not noemail.is_staff and not noemail.is_superuser
+
     mark_one = Product.objects.get(slug="soulsear-mark-i")
     assert not mark_one.is_available
     assert mark_one.category.name == "Defense"
