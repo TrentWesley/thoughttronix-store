@@ -1,11 +1,11 @@
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib.auth.views import LoginView, LogoutView
+from django.contrib.auth.views import LoginView, LogoutView, PasswordChangeView
 from django.contrib.messages.views import SuccessMessageMixin
 from django.urls import reverse_lazy
 from django.views.generic import CreateView, TemplateView
 
-from .forms import SignInForm, SignupForm
+from .forms import SignInForm, SignupForm, StyledPasswordChangeForm
 
 
 class SignupView(SuccessMessageMixin, CreateView):
@@ -43,3 +43,25 @@ class SecurityCenterView(LoginRequiredMixin, TemplateView):
     """
 
     template_name = "accounts/security.html"
+
+
+class SecurityPasswordChangeView(LoginRequiredMixin, PasswordChangeView):
+    """Change the signed-in user's password from the Security Center.
+
+    Django's ``PasswordChangeView`` already requires sign-in, checks the
+    current password, runs the validators, and calls
+    ``update_session_auth_hash`` — this session stays signed in while the
+    user's other sessions stop authenticating. On top of that we send the
+    password-changed notification and return to the hub with a message;
+    there is no separate "done" page.
+    """
+
+    form_class = StyledPasswordChangeForm
+    template_name = "accounts/password_change.html"
+    success_url = reverse_lazy("accounts:security")
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        self.request.user.send_password_changed_notification()
+        messages.success(self.request, "Your password has been changed.")
+        return response

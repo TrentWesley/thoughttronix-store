@@ -28,6 +28,56 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-11 — Account Security Center Phase 3: change password, password-changed notification, DEFAULT_FROM_EMAIL
+
+### Prompts
+1. "@prd/account-security.md @plans/account-security.md Do Phase 3. Follow the approved Phase 3 plan and its acceptance criteria exactly. Implement the password-change feature using Django's built-in password management framework. [Requirements: the page at `/accounts/security/password/`; require authentication and verify the current password; use Django's built-in password validation and hashing; keep the current session signed in; invalidate other sessions as the plan specifies; send a password-changed notification through the console email backend; put the notification in a method on the User model; include the username, a UTC timestamp, and instructions to use the sign-in page's Forgot password option if the change was unauthorized; configure `DEFAULT_FROM_EMAIL` and the email template; preserve existing account and shopping functionality.] Implement ONLY Phase 3. Do not begin Phase 4. Add automated tests for the Phase 3 acceptance criteria. Run: uv run pytest, uv run ruff check ., uv run ruff format --check . Report the files changed, test results, and any issues encountered. Explain how I can manually verify Phase 3 in the browser, including the console email notification. Do not modify or commit db.sqlite3. Do not commit or push any files yet. Wait for my manual review and approval."
+2. "Phase 3 manual browser verification is complete and all checks passed. [The user listed seven checks; they are recorded under Summary.] Update PROMPTS.md with an accurate Phase 3 entry documenting: the Phase 3 implementation prompt; automated results: 303 tests passed, Ruff checks passed; all manual browser verification results; any issues, fixes, or implementation decisions. Do not commit or push yet. Do not modify, restore, reset, or stage db.sqlite3. When finished, show me the Phase 3 PROMPTS.md entry and git status."
+
+### Summary
+- **Outcome:**
+  - **Implementation:**
+    - **`config/settings.py`:** `DEFAULT_FROM_EMAIL` is read through environs with the default `ThoughtTronix Store <no-reply@thoughttronix.local>`. `EMAIL_BACKEND` stays the console backend, and `TIME_ZONE` stays UTC. **`.env.example`** gained a commented-out `DEFAULT_FROM_EMAIL` line.
+    - **`accounts/models.py`:** `User.send_password_changed_notification()` renders `templates/accounts/email/password_changed.txt` with the user and `timezone.now()` in UTC, and sends it with `send_mail` from `settings.DEFAULT_FROM_EMAIL` to the user's email. It returns without sending when the email is blank.
+    - **`templates/accounts/email/password_changed.txt`:** plain text with the username, the date and time labelled "UTC", and plain-worded advice to go to the sign-in page and select "Forgot your password?" if the change wasn't theirs. It has no link, password, or token. It is wrapped in `{% autoescape off %}` so plain-text output isn't HTML-escaped (for example, a username containing `&`).
+    - **`accounts/forms.py`:** `StyledPasswordChangeForm` subclasses Django's stock `PasswordChangeForm` only to add the DaisyUI `input w-full` class, following the existing `SignInForm` pattern. Validation is unchanged: the current password must be correct, and the new one must pass `AUTH_PASSWORD_VALIDATORS`.
+    - **`accounts/views.py`:** `SecurityPasswordChangeView(LoginRequiredMixin, PasswordChangeView)`. Django's `form_valid` saves the new password and calls `update_session_auth_hash`, which keeps the current session signed in. Other sessions stop authenticating because their stored session auth hash no longer matches. The view then calls the notification method, adds "Your password has been changed.", and redirects to `accounts:security`. There is no separate "done" page.
+    - **`accounts/urls.py`:** `security/password/` is named `accounts:password_change`.
+    - **`templates/accounts/password_change.html`:** a new page styled like the signup page, with field help text, errors, and a link back to the Security Center. **`templates/accounts/security.html`** gained a "Password" card with a "Change password" link.
+    - **Tests (`accounts/test_password_change.py`, 18 tests):**
+      - the URL path, and the signed-out redirect with `next`
+      - the hub's link to the page
+      - a wrong current password, and four failing new passwords (too short, too common, entirely numeric, mismatched): each re-renders with errors, leaves the password unchanged, and sends no mail
+      - a valid change redirects to the hub with the message, and the client stays authenticated
+      - a second `Client` signed in before the change is redirected to sign in afterward
+      - exactly one notification from `DEFAULT_FROM_EMAIL` to the user's address, containing the username, "UTC", and "Forgot your password?", and not containing either password, `http`, or a reset-token-shaped string
+      - a user with no email changes their password, sees the message, and `mail.outbox` stays empty
+      - staff and superuser can use the page
+      - direct unit tests of the method: it does nothing without an email, and it uses the `DEFAULT_FROM_EMAIL` setting
+  - **Automated checks:** `uv run pytest` passed 303 tests. `uv run ruff check .` reported "All checks passed!", and `uv run ruff format --check .` reported 70 files already formatted.
+  - **Manual browser verification (done by the user):**
+    1. An incorrect current password is rejected.
+    2. A common new password is rejected.
+    3. A successful password change keeps the current session signed in.
+    4. The console notification includes the username, a UTC timestamp, and the recovery instructions.
+    5. The old password no longer works, and the new password does.
+    6. Changing the password invalidates another signed-in browser session.
+    7. The `noemail` account can change its password without any email being sent.
+  - Phase 4 was not started. Nothing was committed or pushed. `db.sqlite3` was already modified before this session. The agent did not modify, restore, reset, or stage it, and the user's manual verification changed passwords in it.
+- **Deviations:**
+  - No recommendation was overridden, and the user asked for no corrections.
+  - **Implementation decisions beyond the plan's wording:**
+    - `LoginRequiredMixin` was added even though `PasswordChangeView` already applies `login_required`. It matches the plan's access-control decision and the hub view, and it doesn't change behavior.
+    - The form subclass exists only for styling. The plan says "Django's stock form", and its validation is untouched.
+    - The email subject ("Your ThoughtTronix Store password was changed") is a string in the model method rather than a separate template.
+  - The plan's optional manual check for staff and superuser was covered by automated tests. The user's report didn't include a browser check of it.
+- **Sideways:**
+  - The first draft of the test module also included a test that `DEFAULT_FROM_EMAIL` equals its default, which skipped itself if the environment overrode the setting, and a trivial test that the method exists. Both were removed before the first test run as awkward and low-value. The `DEFAULT_FROM_EMAIL` behavior is still covered by the outbox and settings-override tests.
+  - When the agent rendered a sample notification in its Windows terminal to check the wording, the em dash in the sign-off printed as a garbled character. This came from console encoding, not the template. It was reported to the user, and nothing was changed.
+  - The notification tells users to select "Forgot your password?" on the sign-in page, as the plan requires. That link doesn't exist until Phase 5. This was reported to the user.
+  - The agent didn't update PROMPTS.md during prompt 1, because the header says entries are added only on request. It offered to, and the user asked for this entry in prompt 2.
+  - While writing this entry, the agent's first attempt to insert it through a shell heredoc failed with a bash parse error before any file was changed. The entry was then written with the editor tool instead.
+
 ## 2026-10-11 — Account Security Center Phase 2: case-insensitive unique email constraint, normalization helper, required signup email
 
 ### Prompts

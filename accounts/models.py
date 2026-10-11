@@ -1,6 +1,12 @@
+from datetime import UTC
+
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser, UserManager
+from django.core.mail import send_mail
 from django.db import models
 from django.db.models.functions import Lower
+from django.template.loader import render_to_string
+from django.utils import timezone
 
 
 class User(AbstractUser):
@@ -36,3 +42,24 @@ class User(AbstractUser):
         the @ keeps the capitalization the user typed.
         """
         return UserManager.normalize_email((email or "").strip())
+
+    def send_password_changed_notification(self) -> None:
+        """Tell the user, by email, that their password was just changed.
+
+        A plain-text notice with the username and the time of the change
+        labelled UTC, and plain-worded advice to use "Forgot your password?"
+        on the sign-in page if the change wasn't theirs. It carries no link,
+        password, or token. Does nothing when there's no email on file.
+        """
+        if not self.email:
+            return
+        body = render_to_string(
+            "accounts/email/password_changed.txt",
+            {"user": self, "changed_at": timezone.now().astimezone(UTC)},
+        )
+        send_mail(
+            "Your ThoughtTronix Store password was changed",
+            body,
+            settings.DEFAULT_FROM_EMAIL,
+            [self.email],
+        )

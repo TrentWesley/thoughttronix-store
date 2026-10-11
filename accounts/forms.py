@@ -1,5 +1,9 @@
 from django import forms
-from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.contrib.auth.forms import (
+    AuthenticationForm,
+    PasswordChangeForm,
+    UserCreationForm,
+)
 
 from .models import User
 
@@ -35,6 +39,19 @@ class SignupForm(UserCreationForm):
 
 class SignInForm(AuthenticationForm):
     """The stock authentication form, dressed in DaisyUI."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs["class"] = "input w-full"
+
+
+class StyledPasswordChangeForm(PasswordChangeForm):
+    """Django's stock password-change form, dressed in DaisyUI.
+
+    Validation is untouched: the current password must be correct and the
+    new one must pass ``AUTH_PASSWORD_VALIDATORS``.
+    """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -36,5 +36,18 @@
         </dl>
       </div>
     </div>
+
+    <div class="card bg-base-100 mt-6 shadow-md">
+      <div class="card-body">
+        <h2 class="card-title">Password</h2>
+        <p class="text-sm opacity-70">
+          Choose a new password. You'll stay signed in here; other devices
+          will be signed out.
+        </p>
+        <div class="card-actions mt-2">
+          <a href="{% url 'accounts:password_change' %}" class="btn btn-primary btn-sm">Change password</a>
+        </div>
+      </div>
+    </div>
   </div>
 {% endblock %}
