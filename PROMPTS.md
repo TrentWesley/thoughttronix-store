@@ -28,6 +28,30 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-11 — Account Security Center Phase 1: Security Center hub, navbar link, noemail seed account, split accounts tests
+
+### Prompts
+This entry was written after Phase 1 had already been committed (`62770eb`) and pushed. The prompts from the Phase 1 implementation session aren't recorded here, and none are reconstructed. The facts below come from the user's account of that session (prompt 1) and from the commit itself. Only prompt 1 was given in this session.
+
+1. "Read @PROMPTS.md, @prd/account-security.md, and @plans/account-security.md. Update PROMPTS.md with an accurate Phase 1 implementation session log, following its existing format. [Record the actual Phase 1 work: the hub, navbar link, noemail seed account, and split accounts tests; 271 tests passed, Ruff lint and format check passed; browser checks of customer login, Security Center, navbar greeting link, noemail warning, and shopping cart; the noemail login failure on the un-reseeded dev database, fixed by creating the account in the Django shell; commit `62770eb` pushed to GitHub; `db.sqlite3` intentionally left uncommitted.] Be transparent that this entry is being added after the Phase 1 commit. Do not invent prompts, reviews, or corrections. Do not modify application code. Do not begin Phase 2. Do not commit or push. Show me the updated PROMPTS.md entry and git status."
+
+### Summary
+- **Outcome:**
+  - Phase 1 of `plans/account-security.md` was implemented and committed as `62770eb` ("Complete Account Security Center Phase 1"), then pushed to GitHub:
+    - **Security Center hub:** `/accounts/security/` (`accounts:security`) in `accounts/views.py` and `accounts/urls.py`, rendered by `templates/accounts/security.html`. It shows the signed-in user's username and email, or an add-email reminder when the email is blank.
+    - **Navbar link:** the "Hi, {username}" greeting in `templates/base.html` now links to the hub.
+    - **Seed:** `products/management/commands/seed.py` adds the `noemail` / `noemail123` customer, with no email.
+    - **Tests:** `accounts/tests.py` was split into `test_login.py`, `test_navbar.py`, `test_signup.py`, and the new `test_security.py`. `conftest.py` and `products/tests.py` gained supporting changes.
+  - **Automated checks:** `uv run pytest` passed 271 tests, and `uv run ruff check .` and `uv run ruff format --check .` were clean.
+  - **Browser checks:** customer login, the Security Center, the navbar greeting link, the `noemail` reminder, and the shopping cart all worked.
+  - This session changed only this file. No application code was modified and Phase 2 was not started. Nothing was committed or pushed: this entry is uncommitted, and `db.sqlite3` has local changes that were intentionally left out of the Phase 1 commit.
+- **Deviations:**
+  - The plan's Phase 1 verification says to run `seed` first. The development database wasn't reseeded; `noemail` was created by hand in the Django shell instead (see Sideways).
+  - This entry wasn't written with the header's standard logging prompt, and was added after the phase's commit rather than as part of it.
+- **Sideways:**
+  - Signing in as `noemail` first failed, because the development database had not been reseeded since the seed change, so the account didn't exist. It was created manually in the Django shell, and signing in as `noemail` then worked and showed the reminder.
+  - The Phase 1 session's own prompts weren't logged before the commit, so this entry can't list them.
+
 ## 2026-10-11 — Account Security Center: naive draft, /prd-to-plan interview, approved six-phase plan, and comparison
 
 ### Prompts
