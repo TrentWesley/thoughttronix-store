@@ -28,6 +28,135 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-11 — Account Security Center: naive draft, /prd-to-plan interview, approved six-phase plan, and comparison
+
+### Prompts
+The naive 11-step draft was written, and moved out of the repository, in an earlier session whose prompts aren't recorded here. It isn't in this repository's git history. Prompts 1–6 below were given in this session.
+
+1. "/prd-to-plan Read @prd/account-security.md and create a tracer-bullet implementation plan for the ThoughtTronix Store Account Security Center. Save the official plan to plans/account-security.md. Follow the /prd-to-plan skill instructions. Organize the work into small, independently testable vertical-slice phases. Each phase should include the relevant implementation, tests, verification steps, and a clear stopping point. Use the existing Django project architecture and follow all approved PRD requirements. Interview me about phase granularity and any remaining implementation decisions before finalizing the plan. Do not write application code, create migrations, or implement any phases yet. After creating the proposed plan, summarize the phases and ask for my approval before considering the plan final."
+   - Interview answers, selected from the agent's multiple-choice questions:
+     - Granularity: "Keep 6 phases (Recommended)".
+     - Seed timing for the fourth demo login: "In Phase 1 (Recommended)".
+     - Fourth demo login: "noemail / noemail123".
+     - Test layout: "Split modules (Recommended)".
+     - `SUPPORT_EMAIL` default: "support@thoughttronix.local (Recommended)".
+     - Where email normalization lives: "On the User model/manager (Recommended)".
+2. "I approve the six-phase tracer-bullet implementation plan in plans/account-security.md. Keep all six phases and the agreed architectural decisions. Update the plan's status from \"proposed, awaiting approval\" to \"approved\". Do not implement any phases, create migrations, or write application code yet. Confirm the plan is finalized and ready for implementation."
+3. "Compare the approved tracer-bullet plan at @plans/account-security.md with the original naive draft at ../account-security-draft.md. Explain: 1. How the phase structure and implementation order differ. 2. How the official plan delivers independently testable vertical slices. 3. How testing, verification, and stopping points differ. 4. Why the approved plan is better suited to incremental development. Do not modify either plan. Do not write application code, migrations, or tests. Do not delete the naive draft yet. Give me a concise comparison and wait for my next instruction."
+4. "Update @plans/account-security.md with these two improvements identified during the naive-versus-approved comparison: 1. In Phase 2, explicitly require checking the existing database for case-insensitive duplicate nonblank email addresses before applying the unique-email migration. If duplicates exist, stop and report them rather than silently changing user data. 2. In Phase 6, explicitly require updating CLAUDE.md to document the new Account Security Center architecture and relevant account routes. Keep all six phases, approved architectural decisions, acceptance criteria, and stopping points unchanged. Do not modify the PRD or naive draft. Do not implement application code, migrations, or tests. After editing, summarize exactly what changed and confirm the plan remains approved."
+5. "Update @PROMPTS.md to document the actual Account Security Center planning sessions. [Read the file first and preserve its format and all previous entries. Cover the naive 11-step draft and its move outside the repository, the /prd-to-plan interview and approved decisions, the creation and approval of the six-phase plan, the comparison, and the two post-comparison improvements. Use only supported prompts, decisions, and outcomes. Don't modify code, migrations, tests, the PRD, or either plan. Show a summary and `git status`. Don't commit or push.]"
+
+### Summary
+- **Outcome:**
+  - **Naive draft** (earlier session): `../account-security-draft.md`, outside the repository. It's an 11-step plan ordered by layer:
+    1. settings
+    2. database constraint and helpers
+    3. notification methods and email templates
+    4. signup
+    5. hub
+    6. change password
+    7. update email
+    8. forgot password
+    9. seed and docs
+    10. all tests
+    11. verification
+
+    It ends with three open questions.
+  - **`/prd-to-plan` interview:** the agent read the PRD and explored the `accounts` app, settings, navbar, seed command, `conftest.py`, and the core-platform plan. It proposed six vertical slices, then asked two rounds of questions. Decisions:
+    - six phases
+    - the fourth demo login is `noemail` / `noemail123`, seeded in Phase 1 so the add-email reminder can be shown right away
+    - `accounts` tests split into `test_*.py` modules, like `orders/`
+    - `SUPPORT_EMAIL` defaults to `support@thoughttronix.local`
+    - email normalization lives on the `User` model or its manager
+  - **Approved plan:** `plans/account-security.md` has the architectural decisions in its header, including the PRD's seven-route URL map, and a stopping-point checklist shared by every phase: pytest green, ruff clean, manual check, commit. The six phases are:
+    1. the Security Center hub, as the tracer bullet
+    2. unique emails and signup email
+    3. change password with notification
+    4. update email with masked notice
+    5. forgot password
+    6. demo world and definition of done
+
+    Each phase lists its user stories, acceptance criteria, manual checks, and a stopping point. Prompt 2 changed its status to "approved".
+  - **Comparison** (prompt 3): reported only, with no files changed.
+    - The draft is ordered by layer, its tests are all saved for Step 10, it has no stopping points, and nothing a user can see works until Step 5.
+    - The approved plan delivers a working, tested, committed slice each phase.
+    - The draft does better on detail. Two of its details were missing from the approved plan: checking for duplicate emails before migrating, and updating CLAUDE.md.
+  - **Improvements** (prompt 4), added to the approved plan:
+    - **Phase 2:** before migrating any existing database (dev and the committed snapshot), check it for case-insensitive duplicate nonblank emails. If any are found, stop and report them, and change no data. A matching acceptance criterion and verification step were added.
+    - **Phase 6:** update CLAUDE.md with the Security Center architecture and the seven `accounts:` routes. A matching acceptance criterion was added.
+
+    Existing phases, decisions, criteria, and stopping points were unchanged, and the status stayed "approved".
+  - No application code, migrations, or tests were written, and no tests were run. The PRD and the naive draft were not modified, and the draft was not deleted. Nothing was committed. `plans/account-security.md` and this entry are uncommitted.
+- **Deviations:**
+  - Every interview answer took the recommended option except the demo-login credentials. No option was marked recommended for those; the user picked `noemail` / `noemail123` over `newcomer` / `newcomer123`.
+  - Prompt 3 was a follow-up comparison request. Prompt 4 adopted two gaps the comparison had flagged.
+- **Sideways:**
+  - The approved plan, as first written, lacked the pre-migration duplicate check and the CLAUDE.md update. The comparison caught this and prompt 4 fixed it.
+  - In the first version of the plan, one Phase 5 reset case was worded confusingly ("an email belonging only to blank-email accounts"). The agent reworded it before reporting.
+  - Prompt 5 asked to "append", but this file's convention puts the newest entry at the top. The entry was placed at the top.
+
+## 2026-10-11 — Account Security Center: install skills, grill-me interview, PRD, and PRD review
+
+### Prompts
+1. "Check whether these three Claude Code skills are installed in this project: 1. /grill-me 2. /to-prd 3. /prd-to-plan Check the .claude/skills/ directory and tell me which skills exist and which are missing. Do not create or modify any files yet."
+2. "Create the file .claude/skills/to-prd/SKILL.md with exactly the following content: [the to-prd SKILL.md content, pasted as a single line]"
+3. "Create .claude/skills/prd-to-plan/SKILL.md with the following exact content. Preserve the Markdown formatting and line breaks. Do not create a plan or implement anything yet. [the prd-to-plan SKILL.md content]"
+4. "/grill-me I want to design an Account Security Center for the ThoughtTronix Store. Customers currently can sign up, sign in, and sign out, but they need more ways to manage their account security. The new feature must let customers provide an email address when signing up, change their password while signed in, and reset a forgotten password through email. Please recommend one or two additional useful account security features that would be reasonable for this project. Interview me about the requirements and design decisions before any implementation begins. Do not write code, create a PRD, or create an implementation plan yet."
+5. "I choose Option A only: allow signed-in customers to update their email address after confirming their current password. Keep the three required features: email during signup, password change, and password reset through email. Options B, C, and D are out of scope. Continue the grill interview. Do not create the PRD, plan, or implement anything yet."
+6. "I choose Option B. Email addresses must be unique, enforced by both the forms and the database. Email comparisons should be case-insensitive, and existing accounts with blank email addresses should remain valid. Continue the grill interview. Do not create the PRD, plan, or implement anything yet."
+7. "I choose Option B. Show a reminder in the Account Security Center for existing customers without an email address, but do not block them from using the store. Update the seed data so most demo customers have unique email addresses, but leave one demo customer without an email to test the reminder. Continue to Question 4. Do not create the PRD, plan, or implement anything yet."
+8. "I choose Option A. Create a Security Center hub page at /accounts/security/ with separate pages for changing passwords and updating email addresses. Make the \"Hi, username\" greeting link to the Security Center. Add a \"Forgot your password?\" link to the login page. After successfully changing a password or email address, return the customer to the Security Center with a success message. Continue the grill interview. Do not create the PRD, plan, or implement anything yet."
+9. "I choose Option A. Every signed-in user, including customers, staff, and administrators, should be able to access the Security Center and manage their own password and email address. Signed-out visitors should be redirected to login and then returned to the page they requested. Users must only be able to modify their own account. Staff should not be able to manage other users' security settings through this feature. Continue the grill interview. Do not create the PRD, plan, or implement anything yet."
+10. "I choose Option B. Send a password-change notification email whenever a signed-in user successfully changes their password, as long as their account has an email address. The notification should include the time of the change and instructions to reset the password if the change was unauthorized. Do not include passwords or reset tokens in the notification. If the user has no email address, skip the email but still show the success message. Continue the grill interview. Do not create the PRD, plan, or implement anything yet."
+11. "I choose Option B. Allow signed-in users to update their email address immediately after entering their correct current password and a unique new email address. If the account previously had an email address, send a security notification to the old address explaining that the email was changed and what to do if the change was unauthorized. If the account had no previous email address, skip the notification. Show a success message and return the user to the Security Center. Continue the grill interview. Do not create the PRD, plan, or implement anything yet."
+12. "I choose Option A. The forgot-password page should accept an email address only and always display the same confirmation message, whether or not an account exists. Use Django's built-in PasswordResetView and related password-reset views. Keep Django's default password-reset timeout of 3 days. Reset links should be single-use and become invalid after the password changes. Accounts without email addresses or inactive accounts should not receive reset links, but the page should still show the same confirmation message. Continue the grill interview. Do not create the PRD, plan, or implement anything yet."
+13. "I choose Option A. After successfully resetting their password, users should see the password-reset-complete page with a link to sign in using their new password. Do not automatically sign users in after a password reset. Send a password-change notification email after a successful reset, using the same notification approach as a password change from the Security Center. The notification should not contain passwords or reset tokens. Continue the grill interview. Do not create the PRD, plan, or implement anything yet."
+14. "I choose Option A. Keep sign-in username-only using the existing username and password authentication system. Email addresses should be used for password resets, account recovery, and security notifications, but not for signing in. Do not add a custom authentication backend. Continue the grill interview. Do not create the PRD, plan, or implement anything yet."
+15. "I choose Option A. Trim leading and trailing whitespace, use Django's normalize_email behavior to lowercase the domain, and preserve the user's capitalization in the local part of the email address. Continue enforcing case-insensitive uniqueness through both forms and the database. If a user enters their existing email address again, regardless of capitalization, reject it with a friendly \"That's already your email address\" validation message. Do not save any changes or send a notification. Continue the grill interview. Do not create the PRD, plan, or implement anything yet."
+16. "I choose Option A. Put notification email methods on the existing User model. Use plain-text email templates under templates/accounts/email/ for password-change and email-change notifications. Configure DEFAULT_FROM_EMAIL through environs using .env, with a sensible default such as \"ThoughtTronix Store <no-reply@thoughttronix.local>\". Keep Django's console email backend for development. Real SMTP integration is out of scope. Do not create a new accounts/services.py module or use Django signals for these notifications. Continue the grill interview. Do not create the PRD, plan, or implement anything yet."
+17. "I choose Option B. Send a notification to the old email address showing the new email address partially masked, such as s***@example.com. Include the username, the time of the change, and instructions to contact ThoughtTronix support immediately if the change was unauthorized. Use a configurable SUPPORT_EMAIL setting loaded through environs from .env, with a clearly documented development placeholder until a real support email is configured. Do not show the full new email address or suggest password reset as the recovery method, because reset links would now go to the new address. Continue the grill interview. Do not create the PRD, plan, or implement anything yet."
+18. "I approve the proposed URL map exactly as shown, including the URL paths, names, and access rules. Keep all URLs named under the accounts namespace. Use Django's built-in password-change and password-reset views where appropriate. Use templates under templates/accounts/, extend base.html, and follow the existing DaisyUI styling conventions. After a successful password change or email update, redirect to the Security Center with a success message. Do not include user IDs or slugs in the Security Center URLs. Continue the grill interview. Do not create the PRD, plan, or implement anything yet."
+19. "I choose Option B. Tests should cover successful behavior and every security rule agreed upon during the interview. Use pytest and the existing project testing conventions. Include tests for signup email validation, database uniqueness, authentication and access restrictions, password changes, email updates, password resets, notification emails, and relevant UI links. I approve the definition of done: [pytest passes; ruff clean; migration works with blank-email accounts; seed has the agreed email setup; PROMPTS.md documents the sessions]. Do not add Playwright or Selenium. If the requirements interview is complete, summarize all agreed decisions and identify any remaining questions. Do not create the PRD, implementation plan, or code yet."
+20. "I approve the following final decisions: 1. Keep the project's existing UTC time zone and clearly label notification times as UTC. 2. Use a ThoughtTronix Store-branded plain-text password-reset email with friendly wording and a working reset link using the accounts namespace. 3. For very short email addresses, use masking such as a***@example.com. Never reveal the complete new email address in the old-address notification. 4. Leave Django admin and createsuperuser behavior unchanged. Friendly validation in those interfaces is outside the scope of this feature. 5. Explicitly list password-reset rate limiting and anti-spam protection as out of scope. The requirements interview is now complete. Do not implement anything or create a plan yet. Confirm that all decisions are finalized and ready for /to-prd."
+21. "/to-prd Create the Product Requirements Document for the ThoughtTronix Store Account Security Center using all the finalized decisions from our requirements interview. Save the document as prd/account-security.md. Follow the /to-prd skill template, including the Problem Statement, Solution, numbered User Stories, Implementation Decisions, Out of Scope, and Further Notes. Make sure every approved security requirement is included. Do not introduce features we rejected or decisions we did not approve. Do not create an implementation plan or write application code yet."
+22. "Review @prd/account-security.md against every finalized decision from our /grill-me interview. Check for missing requirements, contradictions, unapproved features, and unnecessary complexity. Pay particular attention to the 49 user stories and whether they accurately reflect our agreed scope. Do not modify the PRD yet. Report any issues you find, or confirm that it is ready for implementation planning. Do not create a plan or write application code."
+23. "I approve the following decisions and PRD corrections: 1. Add a fourth demo login: a customer with a known password and no email address. Keep all existing demo accounts and their email addresses unchanged. Use the new account to demonstrate the missing-email reminder. 2. Choose Option A for password-change notifications. Use plain wording telling users to visit the sign-in page and select \"Forgot your password?\" Do not add a clickable reset link, pass the request into the model method, or introduce a new site-URL setting. 3. Clarify that notification emails must not contain passwords, reset tokens, or personalized reset links. 4. Correct the password-reset requirements to reflect Django's behavior: accounts with unusable passwords do not receive reset emails. 5. Reword Story 36 to say the forgot-password page does not reveal whether an account exists. Acknowledge that signup and email-update duplicate validation can reveal whether an email is already registered. 6. Remove the unapproved requirement about the order of form validation checks. 7. Add a test verifying that changing a password invalidates other existing sessions while keeping the current session authenticated. 8. Correct the Problem Statement to distinguish customers created through the existing signup form from seeded customers who already have email addresses. Update prd/account-security.md with these corrections. Preserve all other approved requirements and the existing scope. After editing, summarize the changes and confirm the PRD is ready for planning. Do not create an implementation plan or write application code yet."
+24. "Update PROMPTS.md by appending a new entry documenting this Account Security Center requirements and PRD session. [Include the grill-me interview and major decisions, the /to-prd command, the PRD review's eight issues, the corrections, and the final outcome.] Follow the existing PROMPTS.md format. Accurately summarize the prompts and decisions from this session without inventing commands, tests, or actions. Do not modify the PRD further, create an implementation plan, or write application code."
+
+### Summary
+- **Outcome:**
+  - Prompt 1 found that only `grill-me` was installed. Prompts 2–3 created `.claude/skills/to-prd/SKILL.md` and `.claude/skills/prd-to-plan/SKILL.md`.
+  - The `/grill-me` interview took fifteen questions plus a final round of five small decisions. It settled:
+    - **Scope:** the three required features, plus updating the email address after confirming the current password. Sign-in activity, failed-login lockout, and "sign out other devices" are out of scope.
+    - **Email field:** unique, ignoring capitalization, enforced by both the forms and a database constraint that excludes blank emails. Addresses are trimmed and passed through `normalize_email`.
+    - **Missing-email reminder:** shown in the Security Center and never blocking the user.
+    - **Layout and access:** a hub at `/accounts/security/` with separate password and email pages, reached from the navbar greeting. Every signed-in user can use it, only on their own account.
+    - **Password change:** Django's `PasswordChangeView`, plus a notification email.
+    - **Email update:** takes effect immediately. A notice goes to the old address with the new address masked, pointing to a configurable `SUPPORT_EMAIL`.
+    - **Password reset:** Django's built-in reset views, email only, with the same reply every time and a 3-day single-use link. There's no automatic sign-in after a reset, and it sends the same password-changed notification.
+    - **Unchanged:** sign-in stays username-only.
+    - **Architecture:** notification methods on `User`, plain-text templates, and `DEFAULT_FROM_EMAIL` through environs. No service module, no signals, and the console backend stays.
+    - **URLs:** seven routes, all under the `accounts:` namespace.
+    - **Tests:** pytest coverage of every security rule.
+    - **Final round:** times labeled UTC, a branded reset email, `a***@` masking, admin and `createsuperuser` left unchanged, and reset rate limiting out of scope.
+  - `/to-prd` wrote `prd/account-security.md` with 49 user stories.
+  - The review (prompt 22) reported eight issues, two of which needed new decisions. Prompt 23 approved fixes for all eight, including a fourth demo login (a customer with a known password and no email) and plain "visit the sign-in page and select 'Forgot your password?'" wording in the password-changed notice. Prompt 23's corrections were applied, leaving 49 user stories.
+  - The PRD was confirmed ready for `/prd-to-plan`.
+  - No application code, tests, or plan were written, and no commands besides read-only inspection were run. Nothing was committed: the two new skills, the PRD, and this entry are uncommitted.
+- **Deviations:**
+  - Q1: the user chose A only (update email) over the recommended A + B (also sign-in activity).
+  - Every other interview answer took the recommended option. Prompt 20 accepted the agent's suggested answers to the five remaining questions.
+  - Prompt 22 was a follow-up review request. In prompt 23 the user chose to add the other-sessions test, rather than just noting it as Django's built-in behavior.
+- **Sideways:**
+  - In Q3 the agent wrongly stated that every seeded customer had no email, without checking the seed command. The user's seed answer (prompt 7) was built on that premise. During the PRD review, the agent read the seed command and found that every demo and background user already has an email, and that the background customers can't sign in. It reported its own error, and prompt 23 replaced the requirement with a fourth demo login.
+  - Prompt 2's skill content arrived as a single line. The agent rebuilt the frontmatter and Markdown line breaks so the skill would load, keeping the wording unchanged, and said so.
+  - The first PRD draft had four other problems, all caught in the review and fixed in prompt 23:
+    - It said Django's reset form skips accounts without a usable "email"; the correct word is "password".
+    - The "no reset token or link" wording was ambiguous.
+    - Story 36 overclaimed that the store's customers couldn't be discovered.
+    - It required a validation order that the user had never approved.
+  - The password-changed notice's link needed the site's full URL, which the model method had no way to get. This was also caught in the review and resolved by using plain wording with no link.
+
 ## 2026-10-04 — Implement product images from HANDOFF.md, browser-verification fixes
 
 ### Prompts
