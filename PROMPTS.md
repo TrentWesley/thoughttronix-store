@@ -28,6 +28,64 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-11 — Account Security Center Phase 5: forgot password, reset link, reset confirm and complete pages, post-reset notification
+
+### Prompts
+1. "@prd/account-security.md @plans/account-security.md Implement Phase 5 of the approved Account Security Center plan: Forgot Password and Password Reset. Read the PRD and implementation plan first. Follow Phase 5 and its acceptance criteria exactly. [Requirements: use Django's built-in password reset views and token system; provide a "Forgot password?" link on the sign-in page; allow users to request a reset using their email address; show the same generic confirmation regardless of whether an account exists; send reset links using the console email backend; configure reset links to expire after 3 days; ensure reset tokens cannot be reused after a successful password change; provide the reset confirmation, new-password, and completion pages; send the required post-reset security notification according to the PRD and plan; preserve existing login, Security Center, password change, email change, and shopping functionality.] Implement ONLY Phase 5. Do not begin Phase 6. Add automated tests covering the Phase 5 acceptance criteria. Run: uv run pytest, uv run ruff check ., uv run ruff format --check . Report: 1. Files changed 2. Automated test results 3. Implementation decisions, issues, or deviations 4. Exact browser steps for manually verifying Phase 5, including the console emails. IMPORTANT: Do NOT modify, restore, reset, stage, or commit db.sqlite3. Do NOT run the seed command. Do NOT update PROMPTS.md yet. Do NOT commit or push anything. Wait for my manual browser verification and approval."
+2. "Phase 5 manual browser verification is complete and approved. [The user listed ten checks and the automated results; they are recorded under Summary.] Tasks: 1. Update PROMPTS.md with an accurate Phase 5 entry, including the original implementation prompt, automated results, manual checks, implementation decisions, deviations, and problems encountered. 2. Review the Phase 5 changes and PROMPTS.md entry for accuracy. 3. Stage ONLY Phase 5 implementation files and PROMPTS.md. 4. Commit with message: Complete Account Security Center Phase 5 5. Push to origin main. 6. Report the commit hash, files committed, and final git status. IMPORTANT: Do NOT stage, modify, restore, reset, or commit db.sqlite3. Do NOT run the seed command. Do NOT use git add -A or git add . Do NOT begin Phase 6. If tests fail or unexpected files appear, stop and report before committing."
+
+### Summary
+- **Outcome:**
+  - **Implementation:**
+    - **`accounts/forms.py`:** `StyledPasswordResetForm` and `StyledSetPasswordForm` subclass Django's stock `PasswordResetForm` and `SetPasswordForm` and only add the DaisyUI `input w-full` class. Matching and validation are untouched: emails match ignoring capitalization; inactive, unusable-password, and blank-email accounts never match; new passwords run through `AUTH_PASSWORD_VALIDATORS`.
+    - **`accounts/views.py`:** four thin subclasses of Django's reset views, each with an accounts template and an `accounts:`-namespaced success URL:
+      - `ForgotPasswordView(PasswordResetView)` uses the plain-text email and subject templates in `templates/accounts/email/` and redirects to `accounts:password_reset_done`.
+      - `ForgotPasswordSentView(PasswordResetDoneView)` shows the generic confirmation.
+      - `ResetPasswordView(PasswordResetConfirmView)` redirects to `accounts:password_reset_complete`. Its `form_valid` calls the existing `User.send_password_changed_notification()` after Django saves the new password. `post_reset_login` stays at Django's default (off).
+      - `ResetPasswordCompleteView(PasswordResetCompleteView)`.
+    - **`accounts/urls.py`:** the four PRD routes, `password-reset/`, `password-reset/sent/`, `reset/complete/`, and `reset/<uidb64>/<token>/`. `reset/complete/` is listed before the confirm route.
+    - **Templates (new):** `password_reset.html`, `password_reset_done.html` ("If an account matches the address you entered…"), `password_reset_confirm.html` (the new-password form when the link is valid; otherwise "This reset link doesn't work" with a "Request a new link" button), and `password_reset_complete.html` (a Sign in button linking to `accounts:login`). All extend `base.html` and match the sign-in page's card styling.
+    - **Emails (new):** `email/password_reset_subject.txt` ("Reset your ThoughtTronix Store password") and `email/password_reset.txt`, a plain-text, ThoughtTronix-branded message whose link is built with `{% url 'accounts:password_reset_confirm' uidb64=uid token=token %}`. It says the link works once and expires in 3 days. The post-reset notification reuses the Phase 3 `password_changed.txt` unchanged.
+    - **`templates/accounts/login.html`:** a "Forgot your password?" link to `accounts:password_reset` below the Sign in button.
+    - **No settings change:** `PASSWORD_RESET_TIMEOUT` is not overridden anywhere, so Django's 3-day default holds; single use comes from Django's token, which is invalidated when the password hash changes.
+    - **Tests (`accounts/test_password_reset.py`, 17 tests):**
+      - the four route paths, and the sign-in page linking to `accounts:password_reset` with the text "Forgot your password?"
+      - the forgot-password page is public
+      - `PASSWORD_RESET_TIMEOUT` equals Django's global default of 3 days
+      - a known email, a case-variant of it, an unknown email (with blank-email accounts present), an inactive account, and an unusable-password account each redirect to `accounts:password_reset_done` and get identical confirmation pages (compared with the per-session CSRF token blanked); only the first two send an email
+      - the reset email goes to the stored address from `DEFAULT_FROM_EMAIL`, is branded in subject and body, is plain text only, and contains a URL that resolves to `accounts:password_reset_confirm`
+      - following the link sets a new password and redirects to the complete page
+      - three weak passwords are rejected, leaving the password unchanged and sending nothing
+      - the complete page renders with a link to `accounts:login`, the client is not authenticated, and the user can then sign in with the new password
+      - completion sends exactly one password-changed notification with "UTC" and "Forgot your password?", and with no new password, no `http`, and no token-shaped string
+      - reusing the link from a fresh client shows the invalid-link page (`validlink` False), and posting to it doesn't change the password
+  - **Automated checks:** `uv run pytest` passed 342 tests. `uv run ruff check .` reported "All checks passed!", and `uv run ruff format --check .` reported 72 files already formatted. The checks were rerun before committing.
+  - **Manual browser verification (done by the user):**
+    1. The "Forgot your password?" link opens the reset request page.
+    2. A reset request for `customer.phase4test@example.com` produces the generic confirmation and a console reset email.
+    3. The reset link opens the "Choose a new password" form.
+    4. Weak passwords are rejected.
+    5. A strong password reset succeeds and shows the completion page.
+    6. The password-changed notification is sent with a UTC timestamp and recovery instructions.
+    7. The customer can sign in with the new password.
+    8. The original reset link cannot be reused.
+    9. Unknown email requests show the same generic confirmation.
+    10. The Security Center, Change Password, Update Email, product catalog, and cart still work.
+  - Phase 6 was not started, and the seed command was not run. `db.sqlite3` was already modified before this session. The agent did not modify, restore, reset, stage, or commit it; the user's manual verification changed data in it.
+- **Deviations:**
+  - No recommendation was overridden, and the user asked for no corrections.
+  - The user's prompt said "Forgot password?"; the link reads "Forgot your password?", the PRD's wording, which the password-changed notification already tells users to select.
+  - The prompt said to "configure reset links to expire after 3 days". Following the plan ("No code overrides `PASSWORD_RESET_TIMEOUT`"), nothing was configured; a test pins the default instead.
+  - **Implementation decisions beyond the plan's wording:**
+    - The notification is sent from `ResetPasswordView.form_valid`, after `super()` saves the password, rather than through a signal, consistent with the no-signals rule.
+    - The sites framework isn't installed, so the reset link's domain comes from the request (`http://127.0.0.1:8000/...` in dev).
+    - The reset email uses the username, not Django's `site_name`, for branding.
+- **Sideways:**
+  - The first test run failed the five identical-confirmation cases: `base.html` embeds a per-session CSRF token in its HTMX `hx-headers`, so two clients never get byte-identical pages. The test now blanks that token before comparing.
+  - The first attempt to patch that test through a Python heredoc mangled the regex (a backslash escape became a control character and the new constant was never inserted), which `ruff check` caught as an undefined name. The edit was redone with the editor tool, and the suite then passed.
+  - `uv run ruff format` reformatted the new test module once before the checks passed.
+  - The agent's Phase 5 report said 23 of the 342 tests were new; the correct number is 17 (325 after Phase 4). This was caught while reviewing for this entry.
+
 ## 2026-10-11 — Account Security Center Phase 4: update email, masked email-changed notice, SUPPORT_EMAIL
 
 ### Prompts

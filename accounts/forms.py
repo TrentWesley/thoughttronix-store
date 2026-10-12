@@ -2,6 +2,8 @@ from django import forms
 from django.contrib.auth.forms import (
     AuthenticationForm,
     PasswordChangeForm,
+    PasswordResetForm,
+    SetPasswordForm,
     UserCreationForm,
 )
 
@@ -51,6 +53,32 @@ class StyledPasswordChangeForm(PasswordChangeForm):
 
     Validation is untouched: the current password must be correct and the
     new one must pass ``AUTH_PASSWORD_VALIDATORS``.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs["class"] = "input w-full"
+
+
+class StyledPasswordResetForm(PasswordResetForm):
+    """Django's stock forgot-password form, dressed in DaisyUI.
+
+    Matching is untouched: emails match ignoring capitalization, and only
+    active accounts with a usable password receive a reset link. Accounts
+    with no email never match.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs["class"] = "input w-full"
+
+
+class StyledSetPasswordForm(SetPasswordForm):
+    """Django's stock set-new-password form, dressed in DaisyUI.
+
+    The new password must pass ``AUTH_PASSWORD_VALIDATORS``.
     """
 
     def __init__(self, *args, **kwargs):
