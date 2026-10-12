@@ -1,5 +1,43 @@
 # Reflection
 
+## Account Security Center
+
+### Question 1
+
+I chose Phase 5, Password Reset. Users needed to be able to request a reset email, create a new password, and use a link that expires after three days. I tested this in my browser by requesting a reset, opening the email link from the terminal, and changing my password. I confirmed I could sign in with the new password and could not reuse the link. I also checked that unknown emails received the same confirmation message. After correcting a URL I entered incorrectly, everything worked, and all 342 tests passed, so I approved the next phase.
+
+### Question 2
+
+Two Django authentication components used are AuthenticationForm and LoginView.
+
+In accounts/forms.py:
+
+class SignInForm(AuthenticationForm):
+
+AuthenticationForm validates login credentials while my form adds DaisyUI styling.
+
+In accounts/views.py:
+
+class SignInView(LoginView):
+
+LoginView handles signing users in and creating authenticated sessions using my custom form and template. This matches the Understanding Authentication lesson because Django handles authentication while my project customizes the forms and appearance.
+
+### Question 3
+
+I chose password reset. In accounts/views.py, my project uses:
+
+class ForgotPasswordView(PasswordResetView):
+
+class ResetPasswordView(PasswordResetConfirmView):
+
+PasswordResetView handles reset requests, while PasswordResetConfirmView validates reset links and allows users to create new passwords. The project also uses PasswordResetDoneView and PasswordResetCompleteView for confirmation pages.
+
+This matches the Password Management lesson because Django handles password validation and reset tokens instead of using custom security code. My project uses the console email backend in config/settings.py to display reset links in the terminal, just like the lesson explains. I kept the custom styling and security notifications because they were required by the project. I tested the complete reset process in my browser before approving Phase 5.
+
+### Question 4
+
+Phase 5 was a useful stopping point because the entire password reset process worked before moving forward. I could request an email, reset my password, sign in, and confirm the old link was invalid. Testing a complete feature made it easier to catch problems and approve the phase before starting Phase 6.
+
 ## Product Images
 
 ### Question 1
