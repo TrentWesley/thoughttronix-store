@@ -9,6 +9,12 @@ Demo logins (documented in the README):
     admin / admin123        superuser
     employee / employee123  staff, "Junior Thought Curator"
     customer / customer123  a plain customer, with order history and a live cart
+    noemail / noemail123    a plain customer with no email on file, to show
+                            the Security Center's add-email reminder
+
+Every account except ``noemail`` gets a unique ``<username>@example.com``
+recovery email, so password reset and the security notifications can be
+demonstrated straight after seeding (emails print to the console).
 """
 
 import random

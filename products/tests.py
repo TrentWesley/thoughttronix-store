@@ -254,6 +254,17 @@ def test_seed_builds_the_demo_world(db):
     assert statuses == set(Order.Status.values)
 
 
+def test_seed_keeps_demo_recovery_emails(db):
+    call_command("seed")
+    call_command("seed")
+
+    emails = dict(get_user_model().objects.values_list("username", "email"))
+    assert emails.pop("noemail") == ""
+    assert emails == {username: f"{username}@example.com" for username in emails}
+    assert {"admin", "employee", "customer", "mwren", "rmalik"} <= emails.keys()
+    assert len(emails) == 12
+
+
 def test_seed_is_idempotent(db):
     call_command("seed")
     first = (

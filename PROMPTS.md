@@ -28,6 +28,78 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-11 — Account Security Center Phase 6: demo readiness, documentation, final PRD audit
+
+### Prompts
+1. "@prd/account-security.md @plans/account-security.md Implement Phase 6 of the approved Account Security Center plan: Final Demo, Documentation, and Verification. Read the PRD and implementation plan completely before making changes. Complete ONLY Phase 6 requirements, including: - Final demo readiness and documentation - README.md updates - .env.example updates if required - CLAUDE.md updates - Seed command documentation/docstring updates - Any remaining Phase 6 automated tests - Final verification of all six phases Perform a thorough audit against all 49 PRD user stories and their acceptance criteria. For every requirement, identify whether it is: - PASS: implemented and verified - FAIL: missing or incorrect - NEEDS MANUAL CHECK: cannot be verified automatically Do not claim requirements pass without evidence. Run: uv run pytest uv run ruff check . uv run ruff format --check . Report: 1. Files changed 2. Test results 3. PRD audit findings 4. Any missing requirements or problems 5. Exact final browser verification steps 6. Any remaining work needed before submission IMPORTANT: - Do NOT modify, restore, reset, stage, or commit db.sqlite3. - Do NOT run the seed command. - Do NOT commit or push yet. - Do NOT update PROMPTS.md yet. - Do NOT create or write REFLECTION.md. I must write my own reflection. - Wait for my review and approval. Copy prompt"
+2. "Phase 6 implementation and mobile browser verification are complete. The automated checks passed: - 351 tests - Ruff lint - Ruff formatting Tasks: 1. Update PROMPTS.md with an accurate Phase 6 entry, including the original prompt, implementation decisions, automated tests, PRD audit, browser verification, and issues encountered. 2. Review all Phase 6 changes for accuracy. 3. Stage ONLY Phase 6 files and PROMPTS.md. 4. Commit with message: Complete Account Security Center Phase 6 5. Push to origin main. 6. Report the commit hash and final git status. IMPORTANT: - Do not stage, modify, restore, reset, or commit db.sqlite3. - Do not run the seed command. - Do not use git add -A or git add . - Do not create or write REFLECTION.md. - Record only browser checks actually confirmed by the user. - Stop if tests fail or unexpected files appear."
+
+### Summary
+- **Outcome:**
+  - **Starting point:** Phases 1–5 were already implemented. The baseline was 342 passing tests, with ruff lint and format clean. `.env.example` already documented `DEFAULT_FROM_EMAIL` and `SUPPORT_EMAIL` (added in Phases 3–4), so it was not changed.
+  - **Documentation:**
+    - **`README.md`:**
+      - `noemail / noemail123` added to the demo-login table, with a note that every other account has a unique `<username>@example.com` email.
+      - New "Account Security Center" section: how to reach the hub, a route table, where emails appear (the dev-server terminal), and how to try a reset.
+      - New "Configuration" table for `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `DEFAULT_FROM_EMAIL`, and `SUPPORT_EMAIL`, with `SUPPORT_EMAIL` flagged as a development placeholder.
+      - The repo-layout paragraph said "four apps" and left out `coupons`; it now lists five.
+    - **`CLAUDE.md`:** the `accounts/` entry now describes the Security Center:
+      - the case-insensitive unique email constraint, which excludes blank emails
+      - `User.normalize_recovery_email()` as the one normalization path
+      - the two notification methods on `User`, and `mask_email()`
+      - the stock reset views, with auto-login off and the 3-day default timeout
+      - the console backend and the two email settings
+      - no service module and no signals
+      - all seven `accounts:` routes
+    - **`products/management/commands/seed.py`:** docstring only. It lists all four demo logins and explains the email setup. No code changed.
+  - **Tests (9 new; 351 total):**
+    - `products/tests.py::test_seed_keeps_demo_recovery_emails`: after seeding twice, every demo and background account has `<username>@example.com` and `noemail` has a blank email (story 46). It follows the existing seed tests in that file, which call the seed command.
+    - `accounts/test_demo_readiness.py`:
+      - a transactional test that migrates `accounts` back to `0001`, creates three blank-email accounts plus one with an email, then applies `0002_email_ci_unique` cleanly
+      - render checks for the three signed-in pages, the three public reset pages, and the invalid-reset-link page
+  - **Extra verification by the agent (outside the test suite):**
+    - **Setup:** the committed `db.sqlite3` snapshot was extracted with `git show` into the scratchpad, and a throwaway settings module pointed at that copy. The real `db.sqlite3` was never opened for writing; its checksum was unchanged.
+    - **Migration:** `migrate` applied `0002` cleanly to that real, pre-feature, seeded snapshot.
+    - **Live HTTP run:** with no `.env` present, the agent drove a dev server on the copy with curl:
+      - Signed-in pages redirect signed-out visitors to sign in with `next`.
+      - Forgot-password for `CUSTOMER@example.com` sent a reset email from the default sender.
+      - The decoded link set a new password, and a weak password was rejected. The complete page linked to sign-in, the reused link showed "This reset link doesn't work", and the password-changed notice was sent.
+      - Signing in with the new password and `next` returned to the hub.
+      - Re-entering the current email in capitals was rejected. A padded mixed-case address was saved as `Casey.Monroe@example.com`, and the masked notice (`C***@example.com`, `support@thoughttronix.local`) went only to the old address.
+      - Password change returned to the hub with its success message.
+    - **Django checks:** `manage.py check` and `makemigrations --check` were clean.
+  - **PRD audit (49 stories):**
+    - 48 PASS, each with named-test evidence.
+    - Story 39 is PASS for branding and the working link, and NEEDS MANUAL CHECK for whether the wording reads as "friendly".
+    - Story 48 is PASS, with the console-wrapping caveat under Sideways.
+    - Visual styling across all pages was marked NEEDS MANUAL CHECK.
+    - No story was FAIL.
+  - **Automated checks:** `uv run pytest` passed 351 tests. `uv run ruff check .` reported "All checks passed!", and `uv run ruff format --check .` reported 73 files already formatted. The checks were rerun after the review edits, before committing.
+  - **Manual browser verification (done by the user):** the user reported that "mobile browser verification [is] complete". They did not list individual steps, so none are recorded here.
+  - **Not touched:** the agent did not run the seed command. `db.sqlite3` was not modified, restored, reset, staged, or committed. PROMPTS.md was written only after the user's approval, and REFLECTION.md was not touched.
+- **Deviations:**
+  - No recommendation was overridden, and the user asked for no corrections.
+  - **Migrate-then-seed criterion split:** the plan's acceptance criterion "migrate from the pre-feature schema on a seeded database, then seed twice" was verified in two parts. Migrate was verified on a scratch copy of the committed snapshot. Seeding twice is covered only by tests on the test database, because the user ruled out running `seed`.
+  - **Manual pass:** the plan's "end-to-end manual pass of every flow" was done by the agent over HTTP on the scratch copy, not in the user's browser. The user did their own mobile browser check.
+  - **Two decisions left with the user.** Both were raised in the Phase 6 report and not acted on:
+    - **`db.sqlite3`:** the committed snapshot is pre-feature (accounts at `0001`, no `noemail`). The working copy holds leftover manual-test data from earlier phases: `customer` and `noemail` have `.phase4test@example.com` emails, and a `phase2test` user exists.
+    - **Console wrapping:** whether to change code so console emails print unwrapped (see Sideways). Only the README note was added.
+  - **Pre-existing conflict, reported but not changed:** CLAUDE.md says tests never invoke the seed command, but the existing seed tests in `products/tests.py` do.
+- **Sideways:**
+  - **Console emails are quoted-printable.**
+    - Any line over 78 characters makes Python's email package choose quoted-printable encoding, and a reset URL is always longer than that.
+    - The console therefore prints the link split across two lines with a trailing `=`, and em dashes print as `=E2=80=94`. Copying the link as printed gives an invalid link. Real mail clients decode it correctly.
+    - A short experiment confirmed the cause: an ASCII body with one long line came out quoted-printable, while a short body with an em dash came out `8bit`.
+    - The README now tells graders to delete the `=` and join the lines.
+  - **Two false alarms came from the agent's curl script, not the app:**
+    - Sign-in seemed to ignore `next` and redirect to `/`. Git Bash on Windows was rewriting the `next=/accounts/...` argument into a Windows path, which Django rightly rejected as unsafe. With `MSYS_NO_PATHCONV=1`, the redirect went to `/accounts/security/`.
+    - The email and password POSTs returned 403 ("CSRF token from POST has incorrect length"). Signed-in pages carry two CSRF tokens, one in the navbar sign-out form and one in the page form, and the script had joined both. Taking the first token fixed it.
+  - **Reviewing for this entry caught three inaccuracies, all fixed before committing:**
+    - CLAUDE.md said all the views act only on `request.user`. It now says the signed-in ones do, because the reset views act on the user named in the link.
+    - The README said every console email is quoted-printable. It now says this applies to emails with lines over 78 characters, which currently means all three.
+    - The new seed test was renamed from the awkward `test_seed_keeps_every_demo_account_s_recovery_email`.
+  - Writing this entry through a shell heredoc failed on quoting, so the entry was written with the editor tool and then inserted.
+
 ## 2026-10-11 — Account Security Center Phase 5: forgot password, reset link, reset confirm and complete pages, post-reset notification
 
 ### Prompts

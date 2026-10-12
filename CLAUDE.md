@@ -19,6 +19,30 @@ A server-rendered Django 6 storefront and back office. The PRD (`prd/core-platfo
 - `accounts/` — custom user model (`accounts.User`, `AbstractUser` + nullable
   `job_title`). Roles are Django's own vocabulary: customers are plain users,
   employees are `is_staff`, the admin is `is_superuser`. No role field, no Groups.
+  Also owns the **Account Security Center** (`prd/account-security.md`):
+  - `email` is the recovery address: optional on the model, required at
+    signup, and unique ignoring capitalization via a database constraint
+    that excludes blanks (`accounts_user_email_ci_unique`).
+  - `User.normalize_recovery_email()` (trim, then `normalize_email`) is the
+    one normalization path, used by the signup and update-email forms. The
+    Django admin and `createsuperuser` are deliberately unchanged.
+  - Notifications are two methods on `User` —
+    `send_password_changed_notification()` and
+    `send_email_changed_notice(old_email)` — plain-text templates in
+    `templates/accounts/email/`, no-ops when there's no address. The notice
+    masks the new address with `mask_email()` and points to `SUPPORT_EMAIL`.
+  - Forgot-password is Django's stock reset views with `accounts:` success
+    URLs; auto-login after reset stays off and `PASSWORD_RESET_TIMEOUT` stays
+    at the 3-day default.
+  - Mail uses the console backend. `DEFAULT_FROM_EMAIL` and `SUPPORT_EMAIL`
+    come from `.env` via environs, with working defaults (`SUPPORT_EMAIL`'s
+    is a development placeholder).
+  - No service module and no signals here. Views are thin CBVs; the
+    signed-in ones act only on `request.user` and never take a user id.
+  - Routes: `accounts:security`, `accounts:password_change`,
+    `accounts:email_change` (signed in), and `accounts:password_reset`,
+    `accounts:password_reset_done`, `accounts:password_reset_confirm`,
+    `accounts:password_reset_complete` (public).
 - `products/` — catalog (`Category`, `Product`, `Tag`), its back-office CRUD,
   and the `seed` command
 - `coupons/` — percentage-off discount codes (order-wide or product-limited)
