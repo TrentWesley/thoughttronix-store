@@ -163,3 +163,8 @@ DEFAULT_FROM_EMAIL = env.str(
     "DEFAULT_FROM_EMAIL",
     default="ThoughtTronix Store <no-reply@thoughttronix.local>",
 )
+
+# Where the email-changed notice tells people to turn if a change wasn't
+# theirs. The default is a development placeholder — set a real support
+# address in .env before any real deployment.
+SUPPORT_EMAIL = env.str("SUPPORT_EMAIL", default="support@thoughttronix.local")

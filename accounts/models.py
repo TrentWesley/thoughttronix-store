@@ -9,6 +9,18 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 
 
+def mask_email(email: str) -> str:
+    """Partially mask an email address for a security notice.
+
+    Keeps the first character before the @, then ``***``, then the full
+    domain: ``sam@example.com`` becomes ``s***@example.com``, and a
+    one-character address such as ``a@example.com`` becomes
+    ``a***@example.com``. The full address is never returned.
+    """
+    local, _, domain = email.rpartition("@")
+    return f"{local[:1]}***@{domain}"
+
+
 class User(AbstractUser):
     """The store's user model.
 
@@ -62,4 +74,31 @@ class User(AbstractUser):
             body,
             settings.DEFAULT_FROM_EMAIL,
             [self.email],
+        )
+
+    def send_email_changed_notice(self, old_email: str) -> None:
+        """Warn the previous address that the account's email was changed.
+
+        Call this after ``email`` holds the new address. The plain-text
+        notice shows the username, the time labelled UTC, and the new
+        address only partially masked, and tells the owner to contact
+        ThoughtTronix support at ``SUPPORT_EMAIL`` if the change wasn't
+        theirs. Does nothing when there was no previous address.
+        """
+        if not old_email:
+            return
+        body = render_to_string(
+            "accounts/email/email_changed.txt",
+            {
+                "user": self,
+                "changed_at": timezone.now().astimezone(UTC),
+                "masked_email": mask_email(self.email),
+                "support_email": settings.SUPPORT_EMAIL,
+            },
+        )
+        send_mail(
+            "Your ThoughtTronix Store email address was changed",
+            body,
+            settings.DEFAULT_FROM_EMAIL,
+            [old_email],
         )

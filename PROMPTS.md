@@ -28,6 +28,68 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-11 — Account Security Center Phase 4: update email, masked email-changed notice, SUPPORT_EMAIL
+
+### Prompts
+1. "@prd/account-security.md @plans/account-security.md Implement Phase 4 of the approved Account Security Center plan: Email Change. Read the PRD and implementation plan first. Follow Phase 4 and its acceptance criteria exactly. [Requirements: let authenticated users change their email at `/accounts/security/email/`; require the current password; validate the new email and enforce the Phase 2 case-insensitive uniqueness rule; update the email immediately after successful validation; send a security notification to the OLD address through the console email backend, including the username, a UTC timestamp, and support contact instructions; handle accounts with no existing email as the PRD and plan say; add an Email Change link to the Security Center; preserve existing account, password-change, and shopping functionality.] Implement ONLY Phase 4. Do not begin Phase 5. Add automated tests covering the Phase 4 acceptance criteria. Run: uv run pytest, uv run ruff check ., uv run ruff format --check . Report: 1. Files changed 2. Test results 3. Any issues or decisions 4. Exact browser steps for manually verifying Phase 4, including the console notification. Do not modify, restore, reset, stage, or commit db.sqlite3. Do not commit or push anything yet. Do not update PROMPTS.md yet. Wait for my manual review and approval."
+2. "Phase 4 manual browser verification is complete. [The user listed ten checks; they are recorded under Summary.] Update PROMPTS.md with an accurate Phase 4 entry. Include: the original Phase 4 implementation prompt; automated results: 325 tests passed, Ruff checks passed; manual browser verification; implementation decisions, issues, and deviations. Do NOT commit or push yet. Do NOT modify, restore, reset, or stage db.sqlite3. Do NOT begin Phase 5. Show me the Phase 4 PROMPTS.md entry and git status when finished."
+
+### Summary
+- **Outcome:**
+  - **Implementation:**
+    - **`config/settings.py`:** `SUPPORT_EMAIL` is read through environs with the default `support@thoughttronix.local`, and a comment marks it as a development placeholder. **`.env.example`** gained a commented-out `SUPPORT_EMAIL` line with the same note.
+    - **`accounts/models.py`:**
+      - A module-level `mask_email()` helper returns the first character of the part before the @, then `***`, then `@` and the full domain (`sam@example.com` → `s***@example.com`, `a@example.com` → `a***@example.com`).
+      - `User.send_email_changed_notice(old_email)` is called after `email` holds the new address. It renders `templates/accounts/email/email_changed.txt` with the user, `timezone.now()` in UTC, the masked new address, and `SUPPORT_EMAIL`, and sends it with `send_mail` from `DEFAULT_FROM_EMAIL` to the old address only. It returns without sending when the old address is blank.
+    - **`templates/accounts/email/email_changed.txt`:** plain text, wrapped in `{% autoescape off %}` like the Phase 3 template. It has the username, the date and time labelled "UTC", the masked new address, and an instruction to contact ThoughtTronix support immediately at the support address if the change wasn't theirs. It never shows the full new address and never mentions a password reset or "Forgot your password".
+    - **`accounts/forms.py`:** `EmailChangeForm` is a plain `forms.Form` that takes the user, with `current_password` and `email` fields in the DaisyUI `input w-full` style.
+      - `clean_current_password` rejects a wrong password.
+      - `clean_email` normalizes with `User.normalize_recovery_email`, rejects the user's own current address in any capitalization with "That's already your email address.", and rejects an address belonging to another account in any capitalization with "That email address already belongs to another account."
+      - `save()` writes only the `email` field.
+    - **`accounts/views.py`:** `EmailChangeView(LoginRequiredMixin, FormView)` passes `request.user` to the form. On success it records the old address, saves the form, calls `send_email_changed_notice(old_email)`, adds "Your email address has been updated.", and redirects to `accounts:security`.
+    - **`accounts/urls.py`:** `security/email/` is named `accounts:email_change`.
+    - **`templates/accounts/email_change.html`:** a new page styled like the password-change page. It reads "Update email" (showing the current address) or "Add email" for an email-less user, and links back to the Security Center.
+    - **`templates/accounts/security.html`:** a new "Email" card with an "Update email" / "Add email" button, and the add-email reminder now has an "Add email" link to the same page.
+    - **Tests (`accounts/test_email_change.py`, 22 tests):**
+      - the URL path, and the signed-out redirect with `next`
+      - the hub links to the page, and the reminder links there for an email-less user
+      - a wrong password; another account's address in three capitalization and spacing variants; the user's own address in three variants, with the exact "That's already your email address." message; and an invalid address: each leaves the stored email unchanged and `mail.outbox` empty
+      - a valid change stores the normalized address (`  Sam@Example.COM  ` → `Sam@example.com`) and redirects to the hub with the message
+      - exactly one notice, addressed only to the old address, from `DEFAULT_FROM_EMAIL`, containing the username, "UTC", the masked address, and an overridden `SUPPORT_EMAIL` value, and not containing the full new address, "reset" in any case, "Forgot your password", or the password
+      - adding a first email saves it, removes the reminder, and sends nothing
+      - extra `user` / `username` POST fields can't change another account
+      - staff and superuser can use the page
+      - the notice method does nothing without an old address
+      - `mask_email` on three addresses, including a one-character local part, never returning its input unchanged
+  - **Automated checks:** `uv run pytest` passed 325 tests. `uv run ruff check .` reported "All checks passed!", and `uv run ruff format --check .` reported 71 files already formatted.
+  - **Manual browser verification (done by the user):**
+    1. Signed-out users are redirected to sign in.
+    2. The Update email form is reachable from the Security Center.
+    3. An incorrect current password is rejected.
+    4. The user's existing email is rejected regardless of capitalization.
+    5. An email address belonging to another account is rejected.
+    6. A valid email change succeeds and the Security Center shows the new address.
+    7. The console notification goes to the OLD address, with a UTC timestamp, the masked new email, and the support contact.
+    8. An account without an email can add one.
+    9. Adding a first email sends no notification.
+    10. The shopping cart still works.
+  - Phase 5 was not started. Nothing was committed or pushed. `db.sqlite3` was already modified before this session. The agent did not modify, restore, reset, or stage it, and the user's manual verification changed emails in it.
+- **Deviations:**
+  - No recommendation was overridden, and the user asked for no corrections.
+  - **Implementation decisions beyond the plan's wording:**
+    - The form is a plain `forms.Form` rather than a `ModelForm` on `User`. A `ModelForm` assigns the new email to the instance during validation, which would have changed `request.user` in memory even on a rejected submission.
+    - The old address is recorded in the view, before `form.save()`, and handed to the notice method, which reads the new address from `self.email`.
+    - `mask_email` is a module-level function in `accounts/models.py` rather than a method on `User`.
+    - The page and hub button read "Add email" instead of "Update email" when the user has no address. One success message, "Your email address has been updated.", covers both cases.
+    - The notice adds a line saying the old address will no longer receive messages about the account. Its wording avoids "reset" and "Forgot your password", as the plan requires.
+    - The subject ("Your ThoughtTronix Store email address was changed") is a string in the model method, as in Phase 3.
+- **Sideways:**
+  - The first draft of the test module included a test that `SUPPORT_EMAIL` is merely set. It was removed before the first test run as low-value; the outbox test checks the setting's value through an override.
+  - `uv run ruff format .` reformatted the new test module once before the checks passed. No other file needed changes.
+  - When the agent rendered a sample notice in its Windows terminal, the em dash in the sign-off printed as a garbled character, as in Phase 3. This came from console encoding, not the template, and was reported to the user.
+  - Reported, not fixed: if two accounts claim the same address at the same instant, the database constraint stops the second with an error page instead of a friendly form error.
+  - While writing this entry, the agent's first attempt to insert it through a shell heredoc failed with a bash parse error before any file was changed. The entry was then written with the editor tool instead.
+
 ## 2026-10-11 — Account Security Center Phase 3: change password, password-changed notification, DEFAULT_FROM_EMAIL
 
 ### Prompts

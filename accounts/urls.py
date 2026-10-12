@@ -14,4 +14,9 @@ urlpatterns = [
         views.SecurityPasswordChangeView.as_view(),
         name="password_change",
     ),
+    path(
+        "security/email/",
+        views.EmailChangeView.as_view(),
+        name="email_change",
+    ),
 ]

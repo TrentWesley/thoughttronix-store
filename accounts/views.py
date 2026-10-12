@@ -3,9 +3,9 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import LoginView, LogoutView, PasswordChangeView
 from django.contrib.messages.views import SuccessMessageMixin
 from django.urls import reverse_lazy
-from django.views.generic import CreateView, TemplateView
+from django.views.generic import CreateView, FormView, TemplateView
 
-from .forms import SignInForm, SignupForm, StyledPasswordChangeForm
+from .forms import EmailChangeForm, SignInForm, SignupForm, StyledPasswordChangeForm
 
 
 class SignupView(SuccessMessageMixin, CreateView):
@@ -65,3 +65,26 @@ class SecurityPasswordChangeView(LoginRequiredMixin, PasswordChangeView):
         self.request.user.send_password_changed_notification()
         messages.success(self.request, "Your password has been changed.")
         return response
+
+
+class EmailChangeView(LoginRequiredMixin, FormView):
+    """Change, or add for the first time, the signed-in user's email.
+
+    Acts on ``request.user`` only. The change takes effect immediately;
+    if there was a previous address, it gets the masked email-changed
+    notice. Adding a first address sends nothing.
+    """
+
+    form_class = EmailChangeForm
+    template_name = "accounts/email_change.html"
+    success_url = reverse_lazy("accounts:security")
+
+    def get_form_kwargs(self):
+        return {**super().get_form_kwargs(), "user": self.request.user}
+
+    def form_valid(self, form):
+        old_email = self.request.user.email
+        user = form.save()
+        user.send_email_changed_notice(old_email)
+        messages.success(self.request, "Your email address has been updated.")
+        return super().form_valid(form)
