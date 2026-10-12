@@ -10,13 +10,13 @@ I chose Phase 5, Password Reset. Users needed to be able to request a reset emai
 
 Two Django authentication components used are AuthenticationForm and LoginView.
 
-In accounts/forms.py:
+In accounts/forms.py on line 42:
 
 class SignInForm(AuthenticationForm):
 
 AuthenticationForm validates login credentials while my form adds DaisyUI styling.
 
-In accounts/views.py:
+In accounts/views.py on line 39:
 
 class SignInView(LoginView):
 
