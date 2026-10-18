@@ -12,6 +12,7 @@ from django.views.generic import (
 )
 
 from accounts.mixins import StaffRequiredMixin
+from reviews.views import form_slot_context
 
 from .forms import CategoryForm, ProductForm, TagForm
 from .models import Category, Product, Tag
@@ -72,8 +73,13 @@ class ProductDetailView(DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        slot = form_slot_context(self.request.user, self.object)
+        context.update(slot)
         context["review_summary"] = self.object.reviews.summary()
-        context["reviews"] = self.object.reviews.newest_first()
+        # The viewer's own review is pinned in the form slot, not listed.
+        context["reviews"] = self.object.reviews.newest_first().excluding(
+            slot["own_review"]
+        )
         return context
 
 

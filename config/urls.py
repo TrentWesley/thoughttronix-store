@@ -16,6 +16,7 @@ urlpatterns = [
     path("", include("dashboard.urls")),
     path("", include("orders.urls")),
     path("", include("products.urls")),
+    path("", include("reviews.urls")),
 ]
 
 # Uploaded media in development; a real web server serves it in production.

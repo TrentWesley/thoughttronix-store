@@ -8,7 +8,7 @@ from django.urls import reverse
 
 from products.models import Product
 
-from .models import Cart, CartItem
+from .models import Cart, CartItem, Order, OrderItem
 
 # --- Model behavior ---------------------------------------------------------
 
@@ -242,3 +242,53 @@ def test_cannot_mutate_another_customers_line(client, cart_item):
 
     assert response.status_code == HTTPStatus.NOT_FOUND
     assert CartItem.objects.count() == 1
+
+
+# --- Delivered orders: the review gate ----------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("status", "counts"),
+    [
+        (Order.Status.DELIVERED, True),
+        (Order.Status.PLACED, False),
+        (Order.Status.SHIPPED, False),
+        (Order.Status.CANCELLED, False),
+    ],
+)
+def test_delivered_containing_counts_only_delivered_orders(
+    customer, product, delivered_order, status, counts
+):
+    order = delivered_order(customer, product, status=status)
+
+    assert (order in Order.objects.delivered_containing(product)) is counts
+
+
+def test_delivered_containing_ignores_other_products(
+    customer, product, other_product, delivered_order
+):
+    delivered_order(customer, other_product)
+
+    assert not Order.objects.delivered_containing(product).exists()
+
+
+def test_delivered_containing_lists_an_order_once(customer, product, delivered_order):
+    order = delivered_order(customer, product)
+    OrderItem.objects.create(
+        order=order,
+        product=product,
+        product_name=product.name,
+        unit_price=product.price,
+        quantity=1,
+    )
+
+    assert list(Order.objects.delivered_containing(product)) == [order]
+
+
+def test_delivered_containing_chains_from_a_users_own_orders(
+    customer, named_customer, product, delivered_order
+):
+    delivered_order(named_customer, product)
+
+    assert not customer.orders.delivered_containing(product).exists()
+    assert named_customer.orders.delivered_containing(product).exists()

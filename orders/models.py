@@ -149,6 +149,18 @@ class PricedCart:
         return self.subtotal - self.discount
 
 
+class OrderQuerySet(models.QuerySet):
+    def delivered_containing(self, product):
+        """Delivered orders with a line for ``product``, each listed once.
+
+        "Delivered" means the ``DELIVERED`` status only: placed, shipped,
+        and cancelled orders don't count. Reviews gate on this.
+        """
+        return self.filter(
+            status=Order.Status.DELIVERED, items__product=product
+        ).distinct()
+
+
 class Order(models.Model):
     """A placed order — a snapshot, never a live view of the catalog.
 
@@ -204,6 +216,8 @@ class Order(models.Model):
 
     # default (not auto_now_add) so the seed can backdate orders.
     created_at = models.DateTimeField(default=timezone.now)
+
+    objects = OrderQuerySet.as_manager()
 
     class Meta:
         ordering = ["-created_at"]

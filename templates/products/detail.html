@@ -3,6 +3,12 @@
 
 {% block title %}{{ product.name }} — The ThoughtTronix Store{% endblock %}
 
+{% block head %}
+  {# This page only: let HTMX 2 swap the reviews' 403/404 inline alerts. #}
+  {# 204 never swaps; 2xx/3xx do; 403/404 swap as errors; other errors don't. #}
+  <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"40[34]","swap":true,"error":true},{"code":"[45]..","swap":false,"error":true},{"code":"...","swap":false}]}' />
+{% endblock %}
+
 {% block content %}
   <div class="breadcrumbs mb-6 text-sm">
     <ul>
@@ -61,6 +67,9 @@
   <section id="reviews" class="mt-12 max-w-3xl">
     <h2 class="mb-4 text-2xl font-bold">Reviews</h2>
     {% include "reviews/partials/_summary.html" %}
+    <div id="review-form-slot" class="mt-6">
+      {% include "reviews/partials/_form_slot.html" %}
+    </div>
     <div id="review-list" class="mt-6 flex flex-col gap-4">
       {% for review in reviews %}
         {% include "reviews/partials/_review_card.html" %}

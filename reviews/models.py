@@ -10,10 +10,20 @@ from django.core.validators import MaxLengthValidator, MinLengthValidator
 from django.db import models
 from django.utils import timezone
 
+from orders.models import Order
 from products.models import Product
 
 COMMENT_MIN_LENGTH = 10
 COMMENT_MAX_LENGTH = 2000
+
+
+class Eligibility(models.TextChoices):
+    """Whether a user may write a review of a product, and if not, why."""
+
+    ELIGIBLE = "eligible", "Eligible"
+    SIGNED_OUT = "signed_out", "Signed out"
+    NOT_PURCHASED = "not_purchased", "No delivered purchase"
+    ALREADY_REVIEWED = "already_reviewed", "Already reviewed"
 
 
 @dataclass(frozen=True)
@@ -35,6 +45,25 @@ class ReviewQuerySet(models.QuerySet):
     def newest_first(self):
         """Reviews newest first, with their authors loaded for display."""
         return self.select_related("user").order_by("-created_at", "-pk")
+
+    def excluding(self, *reviews):
+        """Leave out the given (pinned) reviews; ``None`` entries are skipped."""
+        return self.exclude(pk__in=[review.pk for review in reviews if review])
+
+    def eligibility(self, user, product) -> Eligibility:
+        """May ``user`` write a review of ``product``? If not, why not.
+
+        Only the user's own delivered orders and reviews count: product
+        availability is ignored and staff get no exemption. Checked at
+        creation only — an existing review outlives its order.
+        """
+        if not user.is_authenticated:
+            return Eligibility.SIGNED_OUT
+        if self.filter(user=user, product=product).exists():
+            return Eligibility.ALREADY_REVIEWED
+        if not Order.objects.filter(user=user).delivered_containing(product).exists():
+            return Eligibility.NOT_PURCHASED
+        return Eligibility.ELIGIBLE
 
     def summary(self) -> ReviewSummary:
         """The average rating and count, in one aggregate query."""

@@ -28,6 +28,37 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-18 — Product Reviews Phase 2: eligibility, the review form, in-place HTMX creation, and the HTMX error machinery (TDD)
+
+### Prompts
+1. "Read @prd/product-reviews.md and @plans/product-reviews.md. Implement ONLY Phase 2 of the Product Reviews plan. Follow the RED → GREEN TDD workflow: inspect existing patterns, write and run failing tests first, then implement only Phase 2. Run the full test suite, Ruff checks, migration checks, and Django system checks. Provide manual browser verification steps and STOP for my approval before committing, pushing, or starting Phase 3. Do not modify or commit db.sqlite3." (run right after a `/clear`)
+2. "uv run python manage.py tailwind runserver"
+3. "I approve Product Reviews Phase 2. The manual browser verification passed, including eligibility, validation, HTMX submission, duplicate prevention, and expired-session redirect. Please rerun all automated checks, document this Phase 2 session in PROMPTS.md, commit with the message 'Complete Product Reviews Phase 2', and push to origin/main. Verify git status afterward. Do not commit db.sqlite3 or start Phase 3."
+
+### Summary
+- **Outcome:**
+  - **Exploration** (prompt 1): the agent read the Phase 1 `reviews` code (model, queryset, admin, partials, tests), `ProductDetailView` and `detail.html`, `base.html`, the cart's HTMX views and OOB badge partial, `Order`/`OrderItem`, `StaffRequiredMixin`, `conftest.py`, and the root URLs. It also grepped the vendored htmx 2.0.6 to confirm that `HX-Redirect` is handled *before* `responseHandling`, so a sign-in redirect works whatever the page config says.
+  - **RED** (prompt 1): 71 new tests across `orders/tests.py` (`delivered_containing`), `reviews/test_eligibility.py`, `reviews/test_forms.py`, and `reviews/test_create.py` (form-slot states, page-scoped `htmx-config`, create success/invalid/403/404, the duplicate race, signed-out HTMX and plain requests). The run, with `--continue-on-collection-errors`, showed **48 failed, 1 collection error, 398 passed**. The failures were the expected ones: no `Order.objects.delivered_containing`, no `Review.objects.eligibility`, no `reviews:` namespace (NoReverseMatch), and missing slot markup and meta tag. The collection error was `test_forms.py` importing the not-yet-written `reviews.forms`. Three new tests already passed: the two "no htmx-config on the catalog/cart" tests, which assert absence, and the list-placement test, which Phase 1's `#review-list` markup already satisfied.
+  - **GREEN** (prompt 1):
+    - `orders/models.py`: `OrderQuerySet.delivered_containing(product)` (status `DELIVERED` only, `distinct()`), installed as `Order.objects`.
+    - `reviews/models.py`: an `Eligibility` TextChoices (eligible, signed out, not purchased, already reviewed), `ReviewQuerySet.eligibility(user, product)`, which checks already-reviewed before purchase and ignores availability and staff status, and `excluding(*reviews)` for pinned reviews.
+    - `reviews/forms.py`: `ReviewForm`, with a `TypedChoiceField` rating on `RadioSelect` and a stripped `CharField` comment of 10–2,000 characters.
+    - `reviews/views.py`: `ReviewEndpointMixin`. It sends signed-out HTMX requests a 204 with `HX-Redirect` to sign-in (`next` = the product page), sends plain requests the normal login redirect, and turns `PermissionDenied`/`Http404` into the `_alert.html` partial with the real status, `HX-Retarget`/`HX-Reswap`, and the summary OOB. There's also a `form_slot_context()` helper and `CreateReviewView`, which re-checks eligibility (403), re-renders the form on invalid input (200), and saves inside a nested `transaction.atomic()` so a duplicate race returns the existing review with a notice.
+    - `reviews/urls.py` (`reviews:create`), included from `config/urls.py`. `ProductDetailView` uses `form_slot_context` and excludes the pinned own review from the list.
+    - Templates: an empty `head` block in `base.html`, the `htmx-config` meta tag on `products/detail.html` only, a `#review-form-slot` wrapper, new partials `_form_slot.html`, `_review_form.html` (DaisyUI rating radios, `hx-disabled-elt`, `novalidate`), and `_alert.html`, and `_summary.html` taught to swap OOB.
+  - **Checks:** 466 passed (395 + 71), ruff check and format clean, `makemigrations --check --dry-run` reported no changes, and `manage.py check` was clean. Rerun before the commit with the same results.
+  - **Dev server** (prompt 2): run in the background. The agent smoke-tested the catalog and the MindSync page (meta tag and slot present).
+  - **Manual verification:** the agent wrote six browser steps using the seeded `customer` account: signed-out link and return, not-eligible states (shipped Seraphine Mini, staff), inline field errors, posting in place, a forced 403 via two tabs, and an expired session. The user ran them, reported them all passing, and approved Phase 2 (prompt 3).
+  - **Commit** (prompt 3): `Complete Product Reviews Phase 2`, pushed to `origin/main`. `db.sqlite3` was left out, as instructed.
+- **Deviations:**
+  - In Phase 1 the agent scaffolded code before RED so that nothing failed on an import. This time it let `test_forms.py` fail at collection on the missing `reviews.forms` module, the module under test, and ran RED with `--continue-on-collection-errors` so the collection error didn't hide the other failures. It reported this instead of adding a stub.
+  - The PRD and plan say to aim alerts "at the affected card". For create there's no card yet, so the alert targets `#review-form-slot` with `innerHTML`. The mixin exposes `get_alert_target()` so Phases 3–4 can aim at `#review-<pk>`.
+  - Prompt 2 was a bare command, which the agent took as a request to start the server.
+  - As in Phase 1, the user ran the browser checklist themselves rather than having the agent report observations.
+- **Sideways:**
+  - At GREEN, 14 form tests failed with "Database access not allowed". ModelForm validation evaluates the rating `CheckConstraint` with a query, so the agent added `pytestmark = pytest.mark.django_db` to `test_forms.py`. This was a test-harness fix, not a change to any assertion.
+  - The Tailwind watcher quit right after starting in the background again, leaving `tailwind.css` older than the new templates (`fieldset-legend` was missing). Plain `tailwind build` said "up to date", so the agent used `tailwind build --force` and told the user that live CSS reload only works from their own terminal.
+
 ## 2026-10-18 — Product Reviews Phase 1: tracer bullet, reviews app and read-only Reviews section (TDD)
 
 ### Prompts

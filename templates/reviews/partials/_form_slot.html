@@ -1,0 +1,25 @@
+{# The form slot's contents, swapped into #review-form-slot. One of four #}
+{# states, by eligibility: the viewer's own review (pinned), the review form, #}
+{# a sign-in link, or why they can't review. With oob_summary, the summary #}
+{# rides along out of band. #}
+{% if eligibility == "already_reviewed" and own_review %}
+  {% if duplicate %}
+    <div role="status" class="alert alert-info alert-soft mb-3">
+      <span>You've already reviewed this product, so here's the review you posted.</span>
+    </div>
+  {% endif %}
+  <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">Your review</p>
+  {% include "reviews/partials/_review_card.html" with review=own_review %}
+{% elif eligibility == "eligible" %}
+  {% include "reviews/partials/_review_form.html" %}
+{% elif eligibility == "signed_out" %}
+  <div class="rounded-box bg-base-100 p-4 text-sm">
+    <a href="{% url 'accounts:login' %}?next={{ product.get_absolute_url|urlencode }}" class="link link-primary">Sign in to review products you've purchased</a>
+  </div>
+{% elif eligibility == "not_purchased" %}
+  <div class="rounded-box bg-base-100 p-4 text-sm opacity-80">
+    Only customers with a delivered order can review this product.
+    If yours is still on its way, you can review it once it's delivered.
+  </div>
+{% endif %}
+{% if oob_summary %}{% include "reviews/partials/_summary.html" with oob=True %}{% endif %}

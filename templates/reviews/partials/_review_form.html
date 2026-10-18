@@ -1,0 +1,40 @@
+{# The review form, posted in place: the response replaces #review-form-slot. #}
+{# Invalid input comes back here with field errors and what was typed. #}
+{# Stars are DaisyUI rating radios; the hidden first radio is "no rating yet". #}
+{# novalidate: the server's field errors are the single source of feedback. #}
+<form hx-post="{% url 'reviews:create' product.pk %}"
+      hx-target="#review-form-slot"
+      hx-swap="innerHTML"
+      hx-disabled-elt="find button[type='submit']"
+      class="card bg-base-100 shadow-sm"
+      novalidate>
+  <div class="card-body gap-4">
+    <h3 class="card-title text-lg">Write a review</h3>
+
+    <fieldset class="fieldset">
+      <legend class="fieldset-legend">{{ form.rating.label }}</legend>
+      <div class="rating rating-lg">
+        <input type="radio" name="{{ form.rating.html_name }}" value="" class="rating-hidden" aria-label="No rating"{% if not form.rating.value %} checked{% endif %} />
+        {% for radio in form.rating %}
+          <input type="radio" name="{{ radio.data.name }}" value="{{ radio.data.value }}" class="mask mask-star-2 bg-warning" aria-label="{{ radio.choice_label }}"{% if radio.data.selected %} checked{% endif %} />
+        {% endfor %}
+      </div>
+      {% for error in form.rating.errors %}
+        <p class="text-sm text-error">{{ error }}</p>
+      {% endfor %}
+    </fieldset>
+
+    <fieldset class="fieldset">
+      <label class="fieldset-legend" for="{{ form.comment.id_for_label }}">{{ form.comment.label }}</label>
+      {{ form.comment }}
+      <p class="label">10 to 2,000 characters.</p>
+      {% for error in form.comment.errors %}
+        <p class="text-sm text-error">{{ error }}</p>
+      {% endfor %}
+    </fieldset>
+
+    <div class="card-actions justify-end">
+      <button type="submit" class="btn btn-primary">Post review</button>
+    </div>
+  </div>
+</form>

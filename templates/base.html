@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}The ThoughtTronix Store{% endblock %}</title>
     {% tailwind_css %}
+    {% block head %}{% endblock %}
     {# htmx 2.0.6, vendored — version-pinned static file, no CDN. #}
     <script src="{% static 'js/htmx.min.js' %}" defer></script>
   </head>

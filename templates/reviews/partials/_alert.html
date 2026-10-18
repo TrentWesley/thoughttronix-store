@@ -1,0 +1,6 @@
+{# An inline refusal (403 or 404), aimed by HX-Retarget/HX-Reswap at the #}
+{# element it concerns. The summary rides along out of band when known. #}
+<div role="alert" class="alert alert-warning alert-soft">
+  <span>{{ message }}</span>
+</div>
+{% if review_summary %}{% include "reviews/partials/_summary.html" with oob=True %}{% endif %}
