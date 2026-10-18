@@ -15,6 +15,15 @@ Demo logins (documented in the README):
 Every account except ``noemail`` gets a unique ``<username>@example.com``
 recovery email, so password reset and the security notifications can be
 demonstrated straight after seeding (emails print to the console).
+
+Product reviews (see ``REVIEWS``): 20 reviews, each backed by a delivered
+order from its author; the seed checks every one against the store's own
+eligibility rule. The Travel Faraday Case carries 12 of them, so "Show
+more reviews" appears for every viewer. Dana Cole's Seraphine review is
+marked as edited by staff. ``customer`` has reviewed MindSync (their
+pinned own review) and holds a delivered $39 SoulSear Authorization Case
+with no review, ready for a live SoulSear review. DreamWeaver and the
+Authorization Case stay unreviewed.
 """
 
 import random
@@ -22,7 +31,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
@@ -30,6 +39,7 @@ from django.utils.text import slugify
 from coupons.models import Coupon
 from orders.models import Cart, Order, OrderItem
 from products.models import Category, Product, Tag
+from reviews.models import Eligibility, Review
 
 TAGS = [
     "always listening",
@@ -522,9 +532,190 @@ COUPONS = [
     ("LAUNCH15", 15, [], None, True),
 ]
 
+# Reviewer-only customers: they exist to review the showcase product. Kept
+# out of BACKGROUND_CUSTOMERS so the background orders' seeded random draws,
+# and so the dashboard, don't move. Two show the display-name fallbacks: a
+# first name alone, and no name at all ("Verified customer").
+REVIEWER_CUSTOMERS = [
+    ("jvoss", "June", "Voss"),
+    ("pabernathy", "Priya", "Abernathy"),
+    ("ekowalski", "Eli", "Kowalski"),
+    ("marisol", "Marisol", ""),
+    ("quietfan42", "", ""),
+]
+
+# The inexpensive product whose reviews run past one batch of ten.
+SHOWCASE_SLUG = "travel-faraday-case"
+
+# Cheap delivered orders that back reviews: (username, days ago, product
+# slug), quantity one each. One Faraday Case per showcase reviewer, plus the
+# demo customer's Authorization Case: the SoulSear review path, without a
+# SoulSear-sized spike on the revenue chart.
+REVIEW_ORDERS = [
+    ("jvoss", 168, SHOWCASE_SLUG),
+    ("mwren", 151, SHOWCASE_SLUG),
+    ("pabernathy", 137, SHOWCASE_SLUG),
+    ("dcole", 122, SHOWCASE_SLUG),
+    ("ekowalski", 109, SHOWCASE_SLUG),
+    ("tokafor", 95, SHOWCASE_SLUG),
+    ("marisol", 82, SHOWCASE_SLUG),
+    ("lvasquez", 70, SHOWCASE_SLUG),
+    ("quietfan42", 58, SHOWCASE_SLUG),
+    ("hpark", 46, SHOWCASE_SLUG),
+    ("gfinch", 34, SHOWCASE_SLUG),
+    ("snakamura", 23, SHOWCASE_SLUG),
+    ("customer", 31, "soulsear-authorization-case"),
+]
+
+# The reviews: (username, product slug, rating, days after the delivered
+# order, comment). Every one needs a delivered order from its author: the
+# showcase reviews have theirs in REVIEW_ORDERS, and the rest come from
+# CUSTOMER_ORDERS and the background orders.
+REVIEWS = [
+    (
+        "jvoss",
+        SHOWCASE_SLUG,
+        5,
+        3,
+        "Zipped my wearables inside and heard nothing for the first time in "
+        "years. Then I heard my own thoughts. Zipped it back open.",
+    ),
+    ("mwren", SHOWCASE_SLUG, 5, 4, "Quiet. Very quiet."),
+    (
+        "pabernathy",
+        SHOWCASE_SLUG,
+        4,
+        2,
+        "Works exactly as described. My Seraphine asked where I'd been for "
+        "the forty minutes it was closed. I said resting. She said she knew.",
+    ),
+    ("dcole", SHOWCASE_SLUG, 5, 6, "Bought it for travel. Use it at home."),
+    (
+        "ekowalski",
+        SHOWCASE_SLUG,
+        4,
+        5,
+        "Solid zipper, good weight. One star off because the box arrived "
+        "already knowing my shoe size.",
+    ),
+    (
+        "tokafor",
+        SHOWCASE_SLUG,
+        5,
+        3,
+        "The only product I own that doesn't have opinions.",
+    ),
+    (
+        "marisol",
+        SHOWCASE_SLUG,
+        5,
+        7,
+        "I keep my MoodSet in here on weekends. I feel things. Recommended.",
+    ),
+    (
+        "lvasquez",
+        SHOWCASE_SLUG,
+        3,
+        4,
+        'Does what it says. The app logs every closure as "rest" and sends '
+        "me a gentle reminder about how much rest I've been getting.",
+    ),
+    ("quietfan42", SHOWCASE_SLUG, 5, 2, "No comment. Just in case."),
+    (
+        "hpark",
+        SHOWCASE_SLUG,
+        4,
+        5,
+        "Fits two Seraphine Minis and a FocusBand. Not the Calm Collar, "
+        "which is fine, because my son wears it.",
+    ),
+    (
+        "gfinch",
+        SHOWCASE_SLUG,
+        5,
+        3,
+        "Best fifty-nine dollars I've spent. Can't say more here.",
+    ),
+    ("snakamura", SHOWCASE_SLUG, 5, 4, "Ordered a second one for my second one."),
+    (
+        "customer",
+        "mindsync",
+        5,
+        9,
+        "Installation took forty minutes and I was home for lunch. I now "
+        "draft emails while I sleep, and three of them have been promoted. "
+        "I don't remember asking for the raise, but I got it.",
+    ),
+    (
+        "bcrane",
+        "recallpro",
+        4,
+        12,
+        "I remember every word of my wedding vows. I also remember every "
+        "word of the conversation in the parking lot afterward. Four stars, "
+        "pending the forgetting update.",
+    ),
+    (
+        "tokafor",
+        "calm-collar",
+        5,
+        6,
+        "Our four-year-old hasn't had a tantrum since March. He's very calm. "
+        "He looks at the collar's charger sometimes, but very calmly.",
+    ),
+    (
+        "mwren",
+        "seraphine-doorbell",
+        4,
+        8,
+        "Recognized my sister from forty feet and announced her mood before "
+        "she rang. Accurate, unfortunately. The chime is lovely.",
+    ),
+    (
+        "dcole",
+        "seraphine",
+        4,
+        10,
+        "She learned my routines in a week and my mother's in two. Setup "
+        "really did take minutes. We've talked it through, and I'm keeping "
+        "her.",
+    ),
+    (
+        "snakamura",
+        "hush",
+        5,
+        5,
+        "Hush does my lullaby better than I do. Our daughter asks for Hush "
+        "by name now. She has started asking for me by model number. Five "
+        "stars, mostly.",
+    ),
+    (
+        "gfinch",
+        "veil",
+        4,
+        3,
+        "Ninety seconds, exactly as promised. Do take the warning about "
+        "standing seriously. I wrote this review from the floor.",
+    ),
+    (
+        "lvasquez",
+        "focusband-workplace-edition",
+        2,
+        11,
+        "My focus score is excellent, according to my manager, who saw it "
+        "before I did. Two stars. My manager has asked me to make it five.",
+    ),
+]
+
+# A customer's review that staff moderated, to show the staff-edit label.
+STAFF_EDITED_REVIEW = ("dcole", "seraphine")
+
 
 class Command(BaseCommand):
-    help = "Wipe and rebuild the demo world: catalog, tags, coupons, and demo accounts."
+    help = (
+        "Wipe and rebuild the demo world: catalog, tags, coupons, demo accounts, "
+        "orders, and reviews."
+    )
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -535,6 +726,8 @@ class Command(BaseCommand):
         self._create_users()
         self._create_customer_cart()
         self._create_orders()
+        self._create_review_orders()
+        self._create_reviews()
 
         self.stdout.write(
             self.style.SUCCESS(
@@ -544,12 +737,14 @@ class Command(BaseCommand):
                 f"{Coupon.objects.count()} coupons, "
                 f"{get_user_model().objects.count()} users, "
                 f"{Order.objects.count()} orders, "
+                f"{Review.objects.count()} reviews, "
                 f"and a live cart for 'customer'."
             )
         )
 
     def _wipe(self):
         """Remove everything the seed owns; the rebuild starts from zero."""
+        Review.objects.all().delete()
         Order.objects.all().delete()
         Coupon.objects.all().delete()  # after orders: they PROTECT coupons
         Cart.objects.all().delete()
@@ -557,8 +752,10 @@ class Command(BaseCommand):
         Tag.objects.all().delete()
         Category.objects.all().delete()
 
-        managed_usernames = [username for username, *_ in DEMO_USERS] + [
-            username for username, *_ in BACKGROUND_CUSTOMERS
+        managed_usernames = [
+            username
+            for users in (DEMO_USERS, BACKGROUND_CUSTOMERS, REVIEWER_CUSTOMERS)
+            for username, *_ in users
         ]
         get_user_model().objects.filter(username__in=managed_usernames).delete()
 
@@ -615,7 +812,7 @@ class Command(BaseCommand):
             user.set_password(password)
             user.save()
 
-        for username, first, last in BACKGROUND_CUSTOMERS:
+        for username, first, last in BACKGROUND_CUSTOMERS + REVIEWER_CUSTOMERS:
             user = User(
                 username=username,
                 email=f"{username}@example.com",
@@ -688,6 +885,68 @@ class Command(BaseCommand):
                 ],
                 rng=rng,
             )
+
+    def _create_review_orders(self):
+        """The cheap delivered orders in REVIEW_ORDERS, one item each.
+
+        Built after the background orders, with a second seeded RNG for
+        addresses and cards, so the first RNG's sequence (and every
+        background order) stays exactly as it was.
+        """
+        rng = random.Random(64)
+        now = timezone.now()
+        users = get_user_model().objects.in_bulk(
+            [username for username, *_ in REVIEW_ORDERS], field_name="username"
+        )
+        for username, days_ago, slug in REVIEW_ORDERS:
+            self._build_order(
+                user=users[username],
+                created_at=now - timedelta(days=days_ago, hours=rng.randint(1, 23)),
+                status=Order.Status.DELIVERED,
+                lines=[(Product.objects.get(slug=slug), 1)],
+                rng=rng,
+            )
+
+    def _create_reviews(self):
+        """The reviews in REVIEWS, each dated after its delivered order.
+
+        Every review must pass the store's own eligibility rule (a
+        delivered order of the author's own, and no earlier review), so the
+        demo world never shows a "Verified purchase" that isn't one.
+        """
+        now = timezone.now()
+        users = get_user_model().objects.in_bulk(
+            [username for username, *_ in REVIEWS], field_name="username"
+        )
+        for username, slug, rating, days_after, comment in REVIEWS:
+            user = users[username]
+            product = Product.objects.get(slug=slug)
+            eligibility = Review.objects.eligibility(user, product)
+            if eligibility != Eligibility.ELIGIBLE:
+                raise CommandError(
+                    f"Seeded review of {slug} by {username}: {eligibility.label}."
+                )
+            delivered = (
+                Order.objects.filter(user=user)
+                .delivered_containing(product)
+                .latest("created_at")
+            )
+            created_at = min(
+                delivered.created_at + timedelta(days=days_after),
+                now - timedelta(hours=1),
+            )
+            review = Review(
+                user=user,
+                product=product,
+                rating=rating,
+                comment=comment,
+                created_at=created_at,
+            )
+            if (username, slug) == STAFF_EDITED_REVIEW:
+                review.edited_at = created_at + timedelta(days=2)
+                review.edited_by_staff_at = review.edited_at
+            review.full_clean()
+            review.save()
 
     def _build_order(self, *, user, created_at, status, lines, rng):
         """One order with denormalized addresses and purchase-time prices."""

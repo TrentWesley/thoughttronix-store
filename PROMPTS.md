@@ -28,6 +28,81 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-18 — Product Reviews Phase 7: review demo data in the seed, plus CLAUDE.md and README (TDD)
+
+### Prompts
+1. "Read @prd/product-reviews.md and @plans/product-reviews.md. Implement ONLY Phase 7 — Seed Data & Documentation, following the exact requirements and acceptance criteria in the plan. First check git status and preserve all completed Phase 1–6 work. Follow RED → GREEN TDD for any behavior changes, and verify the seed data requirements with tests. Preserve all existing functionality, permissions, pagination, and CSRF handling. Run the complete pytest suite, Ruff lint and format checks, Django system checks, and migration checks. Update PROMPTS.md with the Phase 7 prompts, results, deviations, and sideways issues. Provide an implementation summary and clear manual verification instructions. STOP for my approval before committing or pushing. Do not commit db.sqlite3." (run right after a `/clear`)
+2. "I approve Product Reviews Phase 7. All 11 manual browser checks passed, including the dashboard. Restore the original seeded demo data using the seed command, verify all 20 reviews and 65 orders are present, and confirm the seeded MindSync review is restored. Restore any tracked media files removed by reseeding. Update PROMPTS.md with the manual testing results. Rerun all 606+ tests, Ruff checks, Django system check, and migration check. If everything passes, commit as 'Complete Product Reviews Phase 7' and push to origin/main. Do not commit db.sqlite3. Verify git status and report the commit hash."
+
+### Summary
+- **Outcome:**
+  - **Manual verification** (prompt 2): the user reported that all 11 browser checks passed:
+    1. Show more on the Faraday Case, signed out and as `customer`
+    2. the "Marisol" and "Verified customer" display names, with no usernames
+    3. the pinned own review on MindSync
+    4. a live SoulSear Authorization Case review
+    5. edit and delete in place, with the form returning to the slot
+    6. the not-eligible message on Seraphine Mini
+    7. the staff-edit label on Seraphine
+    8. the 403/404 "no longer available" alert
+    9. the expired-session redirect to sign-in and back
+    10. staff moderation from the back-office Reviews tab
+    11. the dashboard, with no Defense spike
+  - **Restoring the demo data** (prompt 2): the agent ran `manage.py seed` again, which removed the reviews created during manual testing. The shell confirmed 20 reviews and 65 orders, the seeded MindSync review (`customer`, 5 stars, "Casey M.", not edited), and no review on the Authorization Case. The tracked `media/products/*.webp` files deleted by the reseed were restored with `git restore media/`. The checks were rerun before the commit.
+  - **Starting state:** `git status` showed only `db.sqlite3` modified. Phases 1–6 (up to `38f5aee`) were untouched.
+  - **Exploration:** the agent read the PRD, the plan, `seed.py`, `reviews/models.py`, `README.md`, the existing seed tests in `products/tests.py`, and `conftest.py`. To find out which (user, product) pairs the background orders already deliver, it ran the unchanged seed against a throwaway scratchpad database (not `db.sqlite3`). The Travel Faraday Case had no delivered orders, and the seeded random generator makes the background orders the same on every run.
+  - **Design:**
+    - Showcase product: the **Travel Faraday Case** ($59), whose catalog copy already calls it "our best-reviewed product. The reviews are short."
+    - The review data is **static module constants**, so tests can check it without running the seed:
+      - `REVIEWER_CUSTOMERS`: 5 reviewer-only customers. Two show the display-name fallbacks, "Marisol" and "Verified customer".
+      - `REVIEW_ORDERS`: 13 one-item `DELIVERED` orders. That's 12 Faraday Cases and the demo customer's $39 Authorization Case, all 23–168 days old.
+      - `REVIEWS`: 20 reviews. 12 are on the Faraday Case: the 5 reviewer-only customers plus 7 background customers, and none by `customer`. The other 8 are backed by orders that already exist. `customer`'s review is of MindSync.
+      - `STAFF_EDITED_REVIEW`: Dana Cole's Seraphine review.
+    - The reviewer-only customers stay out of `BACKGROUND_CUSTOMERS`. The new orders are built after the background orders, with a second `random.Random(64)`. Together these leave the first generator's draws, and so all 52 existing orders, exactly as they were.
+    - At run time, `_create_reviews()` refuses (with `CommandError`) any review that `Review.objects.eligibility()` would refuse. That's how "every seeded review is backed by a delivered order from its author" is enforced for the 8 reviews whose orders come from the random background data, which a static test can't see. Each review is dated a few days after its author's latest delivered order (never in the future) and passes `full_clean()`. The staff-edited review gets backdated `edited_at` and `edited_by_staff_at`.
+  - **RED:**
+    - New `reviews/test_seed_data.py` (14 tests). They read the seed module's constants (with `getattr(..., [])`, so a missing constant fails an assertion rather than an import). They check:
+      - 15–25 reviews, unique (user, product), and valid ratings and comment lengths
+      - known authors and real products
+      - 4–5 reviewer-only customers, kept separate from the background pool
+      - a cheap, non-Defense showcase with 12–13 reviews, at least 11 not by `customer`
+      - one showcase order per showcase reviewer
+      - review orders that are cheap, older than 14 days, non-Defense, and under $1,000 in total
+      - the demo customer's delivered $39 Authorization Case with no review for it
+      - DreamWeaver and the Authorization Case left unreviewed
+      - `customer` reviewing a product from their own delivered orders
+      - exactly one staff-edited review, by a non-staff author
+    - First run: **9 failed, 5 passed**, all for the expected reason (empty data, `None` showcase). The 5 that passed are vacuously true on empty data.
+    - The existing seed tests in `products/tests.py` (which do call the seed; see Sideways) were updated to the new counts: `customer` has 5 orders, there are 65 orders in all, and 17 users have emails. `Review.objects.count()` was added to the idempotence tuple. Result: **2 failed** (`4 == 5`, emails) and the idempotence test passed (0 reviews both times).
+  - **GREEN:** `products/management/commands/seed.py` got the constants above, `_create_review_orders()`, `_create_reviews()`, `Review.objects.all().delete()` in `_wipe()`, the reviewer-only customers in the managed-user wipe and in user creation, a review count in the success message, and an updated docstring and `help`. `reviews/test_seed_data.py` and `products/tests.py` then passed in full (40 tests).
+  - **Docs:**
+    - CLAUDE.md gained a `reviews/` entry covering its dependencies, rules, HTMX conventions, routes, and the seed data test.
+    - The README gained a **Product reviews** section with demo walkthroughs. Its demo-login table mentions reviews, and the repo layout now lists six apps.
+    - `MAP.md` (the user's own codebase notes) was left alone.
+  - **Checks:**
+    - **606 passed** (592 + 14).
+    - `ruff check` clean. `ruff format --check` clean after `ruff check --fix` removed an unused `pytest` import and `ruff format` reformatted one file.
+    - `manage.py check`: no issues. `makemigrations --check --dry-run`: no changes. `migrate`: nothing to apply.
+  - **Seed verification on `db.sqlite3`** (a scratchpad script ran the seed twice, then queried):
+    - Both runs gave 20 reviews and 65 orders.
+    - No review lacks a delivered order from its author.
+    - The Faraday Case has 12 reviews, all by users other than `customer`.
+    - The only staff-edited review is `dcole`/`seraphine`.
+    - `customer` has 1 delivered Authorization Case order and reviewed only MindSync.
+    - DreamWeaver and the Authorization Case have 0 reviews. There are 0 Defense orders.
+    - Non-cancelled revenue went from $58,772 to $59,519 (**+$747**). The 52 core orders match the old seed's database row for row (user, status, total).
+    - Test-client smoke checks: Show more appears on the Faraday Case signed out and as `customer`. `customer` sees the form on the Authorization Case and DreamWeaver, the not-eligible message on Seraphine Mini, and their own review on MindSync. Seraphine shows "Edited by ThoughtTronix staff".
+  - **Manual browser pass:** run by the user, not the agent (see prompt 2 above).
+- **Deviations:**
+  - The order count is now **65**, above the core PRD's "40–60 orders". The reviews PRD calls for the showcase orders and says they raise the count slightly. The test comment explains the split (52 core + 13 review-backing).
+  - The seed (in `products`) now imports `reviews.models`. The one-way dependency rule is about the apps' runtime code. The seed already builds every app's demo data (coupons, orders), so the agent judged this acceptable.
+  - "Verify the seed data requirements with tests" was met by checking the seed's data statically, plus a run-time eligibility guard and a shell verification. No new test invokes the seed.
+- **Sideways:**
+  - The existing `products/tests.py` seed tests (from earlier projects) **do** call `call_command("seed")`, although CLAUDE.md and both PRDs say tests never invoke the seed. They were kept, with updated counts, and one review count was added to the idempotence check. The conflict is flagged for the user rather than resolved.
+  - Running the seed on `db.sqlite3` deleted two tracked files, `media/products/calm-collar-d32f7c.webp` and `focusforge-c4641c.webp`. Products are wiped, and the product-image `post_delete` cleanup removes their files. They were restored with `git restore`. The reseeded database no longer references them.
+  - `db.sqlite3` (committed as a grading snapshot in `aca5da4`) now holds the reseeded demo world. It stays uncommitted. A leftover `phase1tester` account from Phase 1 manual testing survives, because the seed only deletes the accounts it manages, so the seed reports 19 users rather than 18.
+  - The first attempt to edit `seed.py` through a bash heredoc failed on quoting before any change was written. The edits were redone with the Edit tool.
+
 ## 2026-10-18 — Product Reviews Phase 6: back-office Reviews tab, highlighting, and the delete-count warning (TDD)
 
 ### Prompts

@@ -50,6 +50,33 @@ A server-rendered Django 6 storefront and back office. The PRD (`prd/core-platfo
   permanent, and orders snapshot the discount they got
 - `orders/` — cart, checkout, orders, and back-office order management
 - `dashboard/` — the staff analytics dashboard
+- `reviews/` — **Product Reviews** (`prd/product-reviews.md`): one 1–5 star
+  `Review` with a 10–2,000 character comment per customer per product.
+  - Dependencies point one way: reviews depends on products and orders. The
+    only reverse links are the Reviews section on the product detail page
+    and the review count on the product delete confirmation.
+  - Every rule lives in `ReviewQuerySet` and `Review`: `eligibility()` (a
+    delivered order of the user's own containing the product, checked at
+    creation only; availability ignored, no staff exemption),
+    `summary()`, `batch()` (cursor-based, ten at a time), `excluding()`,
+    `highlighted()`, `editable_by()`, `display_name` ("Margaret W.",
+    "Margaret", or "Verified customer", never a username or email), and
+    `record_edit()`. "Delivered" is `Order.objects.delivered_containing()`
+    in `orders`. No service module and no signals.
+  - Every interaction is an HTMX endpoint returning a
+    `templates/reviews/partials/_*.html` partial; the summary refreshes out
+    of band. Ownership is enforced by the lookup (404 otherwise); an
+    ineligible create is a 403. 403/404s carry an inline alert aimed with
+    `HX-Retarget`/`HX-Reswap`, and only the product page carries the
+    `htmx-config` meta tag that lets HTMX swap them. Anonymous HTMX requests
+    get `HX-Redirect` to sign-in.
+  - Routes: `reviews:create`, `reviews:more`, `reviews:edit`,
+    `reviews:update`, `reviews:cancel_edit`, `reviews:delete_confirm`,
+    `reviews:delete`, `reviews:cancel_delete`, and the staff-only, read-only
+    `reviews:manage_reviews` back-office tab, whose rows link to
+    `Review.get_absolute_url()` (the product page with `?review=<pk>`).
+  - The seed's review demo data is static (`REVIEWS`, `REVIEW_ORDERS`,
+    `REVIEWER_CUSTOMERS`) and checked as data by `reviews/test_seed_data.py`.
 - `PROMPTS.md` — the AI-usage log; append entries, never rewrite history
 - `templates/` — project-level templates (`base.html`); app templates live in
   `templates/<app>/`

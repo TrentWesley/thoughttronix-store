@@ -9,6 +9,7 @@ from django.urls import reverse
 from django.utils.html import escape
 
 from orders.models import CartItem, Order, OrderItem
+from reviews.models import Review
 
 from .models import Category, Product, Tag
 
@@ -237,7 +238,8 @@ def test_seed_builds_the_demo_world(db):
     assert employee.job_title == "Junior Thought Curator"
     assert not customer.is_staff
     assert customer.cart.item_count() == 4
-    assert customer.orders.count() == 4
+    # Four visible orders, plus the delivered Authorization Case for reviews.
+    assert customer.orders.count() == 5
 
     noemail = User.objects.get(username="noemail")
     assert noemail.check_password("noemail123")
@@ -248,8 +250,9 @@ def test_seed_builds_the_demo_world(db):
     assert not mark_one.is_available
     assert mark_one.category.name == "Defense"
 
-    # 40–60 orders across the trailing six months, per the PRD.
-    assert Order.objects.count() == 52
+    # 52 orders across the trailing six months, per the core PRD, plus 13
+    # cheap delivered orders backing the review demo data.
+    assert Order.objects.count() == 65
     statuses = set(Order.objects.values_list("status", flat=True))
     assert statuses == set(Order.Status.values)
 
@@ -262,7 +265,7 @@ def test_seed_keeps_demo_recovery_emails(db):
     assert emails.pop("noemail") == ""
     assert emails == {username: f"{username}@example.com" for username in emails}
     assert {"admin", "employee", "customer", "mwren", "rmalik"} <= emails.keys()
-    assert len(emails) == 12
+    assert len(emails) == 17
 
 
 def test_seed_is_idempotent(db):
@@ -275,6 +278,7 @@ def test_seed_is_idempotent(db):
         CartItem.objects.count(),
         Order.objects.count(),
         OrderItem.objects.count(),
+        Review.objects.count(),
     )
 
     call_command("seed")
@@ -286,6 +290,7 @@ def test_seed_is_idempotent(db):
         CartItem.objects.count(),
         Order.objects.count(),
         OrderItem.objects.count(),
+        Review.objects.count(),
     )
 
     assert first == second
