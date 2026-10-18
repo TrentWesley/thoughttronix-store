@@ -28,6 +28,52 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-18 — Product Reviews: final PRD audit, then two gap fixes (TDD)
+
+### Prompts
+1. "Read @prd/product-reviews.md and compare every requirement against the completed Product Reviews implementation. Verify one review per product, rating and comment, verified-purchase eligibility, owner edit/delete permissions, customer restrictions, staff moderation, and smooth HTMX updates without page reloads or losing scroll position. Also check every additional requirement in the PRD. Report PASS or FAIL for each requirement with supporting code and test evidence. Identify any gaps. Do not modify code, commit, or push." (run right after a `/clear`)
+2. "Fix only the two gaps identified in the final Product Reviews PRD audit: (1) signed-out HTMX create requests for deleted products must redirect or handle the missing product gracefully rather than swapping a full 404 page into the form slot; (2) staff-edited reviews must display both labels when the PRD requires both. Follow RED → GREEN TDD for both fixes, using focused regression tests. Also add a test for the existing hx-disabled-elt submit-button behavior. Run the full pytest suite, Ruff checks, Django checks, and migration checks. Update PROMPTS.md with the real audit and fixes. Do not commit or push yet. Stop and give me manual browser verification instructions."
+3. "I approve the final Product Reviews PRD fixes. All manual browser tests passed, including both edit labels, expired-session redirects, and disabled Post review/Save buttons. I restored the demo data using `uv run python manage.py seed` and `git restore media/`. Verify the restored seed data, rerun the full test suite, Ruff lint and format checks, Django system check, and migration check. Confirm PROMPTS.md records the actual results. If all checks pass, commit the final fixes with message `Fix final Product Reviews PRD gaps` and push to origin/main. Do not commit db.sqlite3. Report the commit hash and final git status."
+
+### Summary
+- **Outcome:**
+  - **Audit** (prompt 1, read-only):
+    - The agent checked all 70 user stories and the PRD's implementation decisions against `reviews/`, the product detail and delete-confirmation pages, `orders.delivered_containing`, the templates, and the tests. It reported PASS or FAIL for each with file and test references.
+    - Checks run: the suite (606 passed), Ruff lint and format, and `makemigrations --check`. The seed ran twice against a throwaway scratchpad database (not `db.sqlite3`) through a scratch settings module. Both runs gave identical results: 20 reviews, none without a delivered order from its author, 12 on the $59 Travel Faraday Case (none by `customer`), and one staff-edited review. `customer` had a delivered $39 Authorization Case with no review and a MindSync review, and DreamWeaver was unreviewed.
+    - The agent did no browser check of its own. The no-reload, scroll-position and alert-swap results rested on the Phase 7 manual checks.
+    - Gaps found:
+      1. A signed-out HTMX create for a deleted product got Django's full 404 page, with no `HX-Redirect`. The product page's `htmx-config` swaps 404s, so that page would land in the form slot. The agent reproduced this with the test client on the scratch database. Cause: `CreateReviewView.product_url()` used `get_object_or_404`, and the mixin calls it from `signed_out_response()` before the `try` that turns a 404 into an alert.
+      2. A staff-edited card showed only "Edited by ThoughtTronix staff", not "Edited" as well. The PRD and the plan say each label shows when its field is set.
+      3. Not a functional gap: no test checked that the form's `hx-disabled-elt` targets its submit button. The existing tests only checked that the attribute was present.
+  - **RED** (prompt 2): 7 focused tests.
+    - `test_create.py`:
+      - `test_anonymous_htmx_create_for_a_deleted_product_returns_to_the_catalog` (204, `HX-Redirect` to sign-in with `next` set to the catalog, empty body)
+      - `test_anonymous_plain_create_for_a_deleted_product_returns_to_the_catalog` (302 to the same place)
+      - `test_post_review_button_is_disabled_while_posting`
+    - `test_edit.py`:
+      - `test_a_staff_edited_review_shows_both_labels` (product page)
+      - `test_a_staff_edit_response_shows_both_labels` (update response)
+      - `test_an_author_edited_review_shows_only_the_edited_label` (a guard)
+      - `test_save_button_is_disabled_while_saving`
+    - A `has_edited_label()` helper matches the plain label as `>Edited<`, because "Edited" is a substring of the staff label.
+    - First run: **4 failed, 3 passed**. The four gap tests failed for the reported reasons: a 404 where 204 or 302 was expected, and the plain label missing. The three that passed cover behavior that already worked: the two disabled-button tests and the author-only label guard. They were never RED.
+  - **GREEN:**
+    - `CreateReviewView.product_url()` now falls back to the catalog when the product is gone. This mirrors `ReviewObjectMixin.product_url()` for a missing review.
+    - `_review_card.html` now shows "Edited" whenever `edited_at` is set, and adds the staff label when `edited_by_staff_at` is set. Its comment was updated. The seed sets both fields on Dana C.'s Seraphine review, so it now shows both labels. The README's wording stays accurate.
+  - **Checks:** 613 passed. Ruff lint and format are clean, `manage.py check` found no issues, and `makemigrations --check` found no changes.
+  - **Manual verification** (prompt 3): the user reported that all browser checks passed:
+    - both labels on Dana C.'s Seraphine review
+    - both labels after a staff edit, with only "Edited" left after the author's next edit
+    - the expired-session redirect for a deleted product (sign-in, then the catalog)
+    - the Post review and Save buttons disabled while posting
+    The user then restored the demo data with `manage.py seed` and `git restore media/`.
+  - **Restored data** (prompt 3): a shell check confirmed 20 reviews and 65 orders, and every review backed by its author's delivered order. The one staff-edited review is Dana C.'s on Seraphine, with `edited_at` set too. `customer`'s MindSync review is 5 stars, shows as "Casey M.", and is not edited. The $39 Authorization Case is delivered to `customer` with no reviews. The Faraday Case has 12 reviews and DreamWeaver none. `media/` was clean.
+  - **Final checks** (prompt 3): 613 passed. Ruff lint and format are clean, `manage.py check` found no issues, and `makemigrations --check` found no changes. The fixes were committed as "Fix final Product Reviews PRD gaps" and pushed to `origin/main`, without `db.sqlite3`.
+- **Deviations:** none. The user chose to fix the two gaps exactly as the audit described them, and asked for the extra hx-disabled-elt test.
+- **Sideways:**
+  - `ruff format --check` flagged one assertion in `test_edit.py`, which was laid out wider than needed. `ruff format` fixed it, and the file's tests were rerun.
+  - The scratch seed runs during the audit left `db.sqlite3` and the tracked `media/` files untouched, as `git status` confirmed.
+
 ## 2026-10-18 — Product Reviews Phase 7: review demo data in the seed, plus CLAUDE.md and README (TDD)
 
 ### Prompts

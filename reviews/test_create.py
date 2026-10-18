@@ -105,6 +105,23 @@ def test_slot_shows_the_form_to_a_verified_purchaser(
     assert 'name="comment"' in page
 
 
+def test_post_review_button_is_disabled_while_posting(
+    client, customer, product, delivered_order
+):
+    delivered_order(customer, product)
+    client.force_login(customer)
+
+    page = page_of(client, product)
+
+    form = re.search(rf'<form[^>]*hx-post="{create_url(product)}"[^>]*>', page)
+    assert form is not None
+    assert "hx-disabled-elt=\"find button[type='submit']\"" in form.group()
+    body = page[form.end() : page.index("</form>", form.end())]
+    assert re.findall(r'<button type="submit"[^>]*>([^<]*)</button>', body) == [
+        "Post review"
+    ]
+
+
 def test_slot_shows_the_form_for_an_unavailable_product(
     client, customer, unavailable_product, delivered_order
 ):
@@ -419,3 +436,32 @@ def test_anonymous_plain_create_gets_the_normal_login_redirect(client, product):
     assert response["Location"] == login_with_next(product)
     assert "HX-Redirect" not in response
     assert not Review.objects.exists()
+
+
+def test_anonymous_htmx_create_for_a_deleted_product_returns_to_the_catalog(
+    client, product
+):
+    # A form left open after the session expired and the product was
+    # deleted: sign-in, then the catalog — never a 404 page in the slot.
+    url = create_url(product)
+    product.delete()
+
+    response = client.post(url, VALID, headers=HTMX)
+
+    assert response.status_code == HTTPStatus.NO_CONTENT
+    catalog = reverse("products:catalog")
+    assert response["HX-Redirect"] == f"{reverse('accounts:login')}?next={catalog}"
+    assert not response.content
+
+
+def test_anonymous_plain_create_for_a_deleted_product_returns_to_the_catalog(
+    client, product
+):
+    url = create_url(product)
+    product.delete()
+
+    response = client.post(url, VALID)
+
+    assert response.status_code == HTTPStatus.FOUND
+    catalog = reverse("products:catalog")
+    assert response["Location"] == f"{reverse('accounts:login')}?next={catalog}"

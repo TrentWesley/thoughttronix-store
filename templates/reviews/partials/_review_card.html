@@ -1,6 +1,6 @@
 {# One review. Edit and Delete appear only for its author and for staff; #}
-{# the server enforces the same rule by its lookup. A staff edit replaces "Edited" #}
-{# with the staff label, until the author edits again. #}
+{# the server enforces the same rule by its lookup. Every edit shows "Edited"; #}
+{# a staff edit adds the staff label too, until the author edits again. #}
 <article id="review-{{ review.pk }}" class="card bg-base-100 shadow-sm">
   <div class="card-body gap-3">
     <div class="flex flex-wrap items-center justify-between gap-2">
@@ -12,10 +12,11 @@
       <p class="text-sm opacity-70">
         <span class="font-semibold">{{ review.display_name }}</span>
         · <time datetime="{{ review.created_at|date:'c' }}">{{ review.created_at|date:"F j, Y" }}</time>
+        {% if review.edited_at %}
+          · <span class="italic" title="{{ review.edited_at|date:'F j, Y' }}">Edited</span>
+        {% endif %}
         {% if review.edited_by_staff_at %}
           · <span class="italic" title="{{ review.edited_by_staff_at|date:'F j, Y' }}">Edited by ThoughtTronix staff</span>
-        {% elif review.edited_at %}
-          · <span class="italic" title="{{ review.edited_at|date:'F j, Y' }}">Edited</span>
         {% endif %}
       </p>
       {% if request.user.is_staff or request.user.pk == review.user_id %}

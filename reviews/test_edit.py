@@ -117,6 +117,17 @@ def test_edit_returns_the_prefilled_form_in_place_of_the_card(client, customer, 
     assert reverse("reviews:create", kwargs={"pk": review.product.pk}) not in html
 
 
+def test_save_button_is_disabled_while_saving(client, customer, review):
+    client.force_login(customer)
+
+    html = client.get(edit_url(review), headers=HTMX).content.decode()
+
+    form = re.search(rf'<form[^>]*hx-post="{update_url(review)}"[^>]*>', html)
+    assert form is not None
+    assert "hx-disabled-elt=\"find button[type='submit']\"" in form.group()
+    assert re.findall(r'<button type="submit"[^>]*>([^<]*)</button>', html) == ["Save"]
+
+
 def test_edit_form_changes_nothing(client, customer, review):
     client.force_login(customer)
 
@@ -282,6 +293,39 @@ def test_staff_label_shows_on_the_public_page(client, review):
     card = card_html(page_of(client, review.product), review)
 
     assert "Edited by ThoughtTronix staff" in card
+
+
+def has_edited_label(html):
+    """The plain "Edited" label, told apart from the staff label."""
+    return re.search(r">\s*Edited\s*<", html) is not None
+
+
+def test_a_staff_edited_review_shows_both_labels(client, review):
+    when = timezone.now()
+    Review.objects.filter(pk=review.pk).update(edited_at=when, edited_by_staff_at=when)
+
+    card = card_html(page_of(client, review.product), review)
+
+    assert has_edited_label(card)
+    assert "Edited by ThoughtTronix staff" in card
+
+
+def test_a_staff_edit_response_shows_both_labels(client, staff_user, review):
+    client.force_login(staff_user)
+
+    html = client.post(update_url(review), CHANGED, headers=HTMX).content.decode()
+
+    assert has_edited_label(html)
+    assert "Edited by ThoughtTronix staff" in html
+
+
+def test_an_author_edited_review_shows_only_the_edited_label(client, review):
+    Review.objects.filter(pk=review.pk).update(edited_at=timezone.now())
+
+    card = card_html(page_of(client, review.product), review)
+
+    assert has_edited_label(card)
+    assert "Edited by ThoughtTronix staff" not in card
 
 
 def test_saving_with_no_changes_is_not_an_edit(client, staff_user, review):

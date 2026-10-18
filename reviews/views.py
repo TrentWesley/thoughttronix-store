@@ -150,7 +150,11 @@ class CreateReviewView(ReviewEndpointMixin, View):
     not_found_message = "This product is no longer available."
 
     def product_url(self):
-        return get_object_or_404(Product, pk=self.kwargs["pk"]).get_absolute_url()
+        """The product page, or the catalog if the product is gone."""
+        product = Product.objects.filter(pk=self.kwargs["pk"]).first()
+        if product is None:
+            return reverse("products:catalog")
+        return product.get_absolute_url()
 
     def post(self, request, pk):
         self.product = get_object_or_404(Product, pk=pk)
