@@ -4,6 +4,7 @@ Every rule about reviews lives here, in ``Review`` and its queryset.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from django.conf import settings
 from django.core.validators import MaxLengthValidator, MinLengthValidator
@@ -15,6 +16,7 @@ from products.models import Product
 
 COMMENT_MIN_LENGTH = 10
 COMMENT_MAX_LENGTH = 2000
+REVIEWS_PER_BATCH = 10
 
 
 class Eligibility(models.TextChoices):
@@ -41,6 +43,40 @@ class ReviewSummary:
         return int(self.average + 0.5)
 
 
+@dataclass(frozen=True)
+class ReviewBatch:
+    """One "Show more" batch of reviews, and whether another one follows."""
+
+    reviews: list["Review"]
+    has_more: bool
+
+    @property
+    def cursor(self) -> str:
+        """Where the next batch starts: just after this batch's last review.
+
+        It names the review's position (``created_at`` and pk), not an
+        offset, so reviews posted or deleted since the page loaded can
+        neither repeat nor skip a review in the next batch.
+        """
+        last = self.reviews[-1]
+        return f"{last.created_at.isoformat()}_{last.pk}"
+
+
+def parse_cursor(cursor: str | None) -> tuple[datetime, int] | None:
+    """A batch cursor's (created_at, pk), or ``None`` if missing or malformed."""
+    if not cursor:
+        return None
+    created, _, pk = cursor.rpartition("_")
+    try:
+        created_at = datetime.fromisoformat(created)
+        pk = int(pk)
+    except ValueError:
+        return None
+    if timezone.is_naive(created_at):
+        return None
+    return created_at, pk
+
+
 class ReviewQuerySet(models.QuerySet):
     def newest_first(self):
         """Reviews newest first, with their authors loaded for display."""
@@ -49,6 +85,26 @@ class ReviewQuerySet(models.QuerySet):
     def excluding(self, *reviews):
         """Leave out the given (pinned) reviews; ``None`` entries are skipped."""
         return self.exclude(pk__in=[review.pk for review in reviews if review])
+
+    def batch(self, after: str | None = None) -> ReviewBatch:
+        """The next ``REVIEWS_PER_BATCH`` reviews, newest first.
+
+        ``after`` is the previous batch's cursor; without one (or with a
+        malformed one) the batch starts from the newest review. Exclude
+        pinned reviews first, with ``excluding()``, so none appears twice.
+        """
+        reviews = self.newest_first()
+        position = parse_cursor(after)
+        if position is not None:
+            created_at, pk = position
+            reviews = reviews.filter(
+                models.Q(created_at__lt=created_at)
+                | models.Q(created_at=created_at, pk__lt=pk)
+            )
+        rows = list(reviews[: REVIEWS_PER_BATCH + 1])
+        return ReviewBatch(
+            reviews=rows[:REVIEWS_PER_BATCH], has_more=len(rows) > REVIEWS_PER_BATCH
+        )
 
     def editable_by(self, user):
         """The reviews ``user`` may edit or delete: staff any, others their own.

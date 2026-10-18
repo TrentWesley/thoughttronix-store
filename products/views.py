@@ -76,10 +76,11 @@ class ProductDetailView(DetailView):
         slot = form_slot_context(self.request.user, self.object)
         context.update(slot)
         context["review_summary"] = self.object.reviews.summary()
-        # The viewer's own review is pinned in the form slot, not listed.
-        context["reviews"] = self.object.reviews.newest_first().excluding(
+        # The viewer's own review is pinned in the form slot, not listed;
+        # the rest come ten at a time, with "Show more" for the next ten.
+        context["review_batch"] = self.object.reviews.excluding(
             slot["own_review"]
-        )
+        ).batch()
         return context
 
 

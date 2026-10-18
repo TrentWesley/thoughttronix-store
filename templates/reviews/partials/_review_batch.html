@@ -1,0 +1,6 @@
+{# One "Show more" batch, swapped in where the button was: the cards, then #}
+{# the next button if more remain. #}
+{% for review in batch.reviews %}
+  {% include "reviews/partials/_review_card.html" %}
+{% endfor %}
+{% include "reviews/partials/_show_more.html" %}

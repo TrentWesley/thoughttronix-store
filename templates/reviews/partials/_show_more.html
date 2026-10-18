@@ -1,0 +1,13 @@
+{# The "Show more reviews" button, last inside #review-list. It swaps itself #}
+{# out for the next batch (and that batch's own button, if more remain), #}
+{# so the list grows in place. Disabled while loading, so a double click #}
+{# can't fetch the same batch twice. #}
+{% if batch.has_more %}
+  <button type="button"
+          id="review-more"
+          class="btn btn-outline btn-sm self-center"
+          hx-get="{% url 'reviews:more' product.pk %}?after={{ batch.cursor|urlencode }}"
+          hx-target="this"
+          hx-swap="outerHTML"
+          hx-disabled-elt="this">Show more reviews</button>
+{% endif %}

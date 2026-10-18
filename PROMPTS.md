@@ -28,6 +28,53 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-18 — Product Reviews Phase 5: Show more reviews (TDD)
+
+### Prompts
+1. "Read @prd/product-reviews.md and @plans/product-reviews.md. First check git status and inspect any partial changes from the interrupted Phase 5 attempt. Preserve all completed Phase 1–4 work and any useful uncommitted changes. Implement ONLY Phase 5 — Show More Reviews, following the exact plan requirements and acceptance criteria. Use RED → GREEN TDD: write and run failing tests before implementation. Reuse the existing Django, HTMX, and Tailwind/DaisyUI patterns. Run the full pytest suite, Ruff checks, Django system checks, and migration checks. Update PROMPTS.md with the Phase 5 prompts, RED/GREEN results, deviations, and sideways issues. Provide a concise summary and step-by-step manual browser testing instructions. STOP for my approval before committing, pushing, or starting Phase 6. Do not commit db.sqlite3."
+2. "uv run python manage.py tailwind build --force"
+3. "uv run python manage.py tailwind runserver"
+4. "I approve Product Reviews Phase 5 — Show More Reviews. Manual browser testing passed: the initial 10 reviews displayed correctly, Show More loaded the next 10 and then the final 5 without duplicates or page reloads, the button disappeared after the last batch, and staff Edit/Delete worked on dynamically loaded reviews. All 24 temporary test accounts and their associated reviews were cleaned up, and Seraphine is back to 1 review. Rerun the complete pytest suite, Ruff checks, Django system checks, and migration checks. Finalize PROMPTS.md with the manual verification and cleanup results. Commit the Phase 5 changes as 'Complete Product Reviews Phase 5' and push to origin/main. Do not commit db.sqlite3 or start Phase 6. Verify the final git status and report the commit hash."
+
+### Summary
+- **Outcome:**
+  - **Interrupted attempt** (prompt 1): `git status` showed only `db.sqlite3` modified, with no untracked files and no stash. The earlier Phase 5 attempt had left no code to keep. Phases 1–4 (`823c7e3`…`f148be9`) were untouched.
+  - **Exploration:** the agent read the PRD, the plan, `reviews/models.py`, `reviews/views.py`, `reviews/urls.py`, `ProductDetailView`, the Reviews section of `products/detail.html`, the card, slot, summary, and alert partials, `reviews/test_product_page.py`, `reviews/test_delete.py`, and the `conftest.py` fixtures.
+  - **RED:** 29 tests in `reviews/test_show_more.py`. They cover:
+    - the first batch of ten, newest first; a button only when more remain (none at exactly 10, none with no reviews); and the button's self-replacing HTMX attributes inside `#review-list`
+    - the endpoint returning the next batch as a partial; the button disappearing on the last batch, including an exactly full one; and every review appearing exactly once across 31 reviews
+    - no skips or repeats when reviews share a timestamp, when a review is posted after the page loaded, or when the last shown review is deleted
+    - signed-out access, an unavailable product, a missing or malformed cursor, GET only, and an inline 404 alert for a product deleted since the page loaded
+    - display rules and Edit/Delete visibility in batch cards
+    - the viewer's own review pinned and excluded from every batch, but not excluded for other viewers
+    - `ReviewQuerySet.batch()` together with `excluding()`
+
+    The first run failed at collection with an `ImportError` for `REVIEWS_PER_BATCH`. As in Phase 4, the agent added the constant and routed `reviews:more` to an empty view, then re-ran: **23 failed** for the expected reasons (no button, so no URL to follow; 405 from the stub; no `batch` attribute; 11–31 cards instead of 10). 6 passed: guards the current page already meets, such as no button and GET only.
+  - **GREEN:**
+    - `reviews/models.py`: `REVIEWS_PER_BATCH = 10`, a `ReviewBatch` dataclass (`reviews`, `has_more`, `cursor`), `parse_cursor()`, and `ReviewQuerySet.batch(after=None)`. Batches use keyset pagination on (`created_at`, pk): they fetch 11 rows to learn whether more remain. Pinned reviews are removed with the existing `excluding()`, so Phase 6's highlighted review can join that set.
+    - `reviews/views.py`: `pinned_reviews()` (the viewer's own review) and `ShowMoreReviewsView`, a public GET. It doesn't use `ReviewEndpointMixin`, because that mixin redirects anonymous visitors. A deleted product gets the alert partial with a 404 and `HX-Retarget: #review-more`.
+    - `reviews/urls.py`: `reviews:more` at `reviews/product/<pk>/more/`.
+    - Templates: new `_review_batch.html` (cards plus the button) and `_show_more.html` (`hx-target="this"`, `hx-swap="outerHTML"`, `hx-disabled-elt="this"`). `products/detail.html` renders the first batch through `_review_batch.html`, and `ProductDetailView` supplies `review_batch` in place of `reviews`.
+    - Checks: **554 passed** (525 + 29). `ruff check` is clean. `ruff format --check` was clean after formatting two files. `manage.py check` found no issues, and `makemigrations --check --dry-run` reported no changes.
+  - **CSS and server** (prompts 2–3): `tailwind build --force` compiled `self-center` into the stylesheet. The dev server started and `/products/seraphine/` returned 200. The Tailwind watcher stopped on its own in the background, as in earlier phases, so the forced build was what mattered.
+  - **Manual verification** (prompt 4): the user loaded the agent's helper data (24 throwaway reviewers on Seraphine, so 25 reviews in all) and reported:
+    - the first 10 reviews displayed correctly
+    - Show more loaded the next 10, then the final 5, with no duplicates and no page reload
+    - the button disappeared after the last batch
+    - staff Edit and Delete worked on reviews loaded by Show more
+
+    The user then deleted all 24 temporary accounts and their reviews. The agent confirmed that Seraphine has 1 review again and that no `showmore` users remain.
+  - **Commit** (prompt 4): the agent reran every check: 554 passed, `ruff check` and `ruff format --check` clean, `manage.py check` with no issues, and `makemigrations --check --dry-run` with no changes. It committed as `Complete Product Reviews Phase 5` and pushed to `origin/main`. `db.sqlite3` was left out, as instructed.
+- **Deviations:**
+  - The plan doesn't say how batches are paginated. The agent chose a keyset cursor over page numbers, so a review posted or deleted while the page is open can't cause a repeat or a skip (user story 8).
+  - It added an inline 404 alert for Show more on a deleted product, which no acceptance criterion requires, so the product page's `htmx-config` swap never lands Django's 404 page in the list.
+  - As in earlier phases, the user ran the browser checklist and the data cleanup themselves.
+- **Sideways:**
+  - The first behavior-level RED run took 65 s, because each of the fixture's users was created with a hashed password. The fixture now creates users without passwords, and the module runs in about 2 s.
+  - Writing the stubs with a Python heredoc changed the working copies of `reviews/models.py`, `views.py`, and `urls.py` to LF line endings. The index is LF, so the diff shows no line-ending changes.
+  - `self-center` (on the button) hadn't been used anywhere before, so the CSS needs `tailwind build --force`.
+  - The dev database has only 3 reviews, so the browser check needs throwaway review data. The agent wrote a helper script in its scratchpad and left running it to the user.
+
 ## 2026-10-18 — Product Reviews Phase 4: deleting reviews in place, plus a stale-CSRF fix for review actions (TDD)
 
 ### Prompts

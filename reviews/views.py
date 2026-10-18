@@ -329,3 +329,45 @@ class CancelDeleteView(ReviewObjectMixin, View):
 
     def get(self, request, pk):
         return self.render_card(self.get_review())
+
+
+def pinned_reviews(user, product) -> list[Review]:
+    """The reviews pinned above the list, which batches must leave out.
+
+    For now, the viewer's own review: it sits in the form slot.
+    """
+    if not user.is_authenticated:
+        return []
+    return list(Review.objects.filter(user=user, product=product))
+
+
+class ShowMoreReviewsView(View):
+    """Public HTMX GET: the next batch of reviews, plus a new Show more button.
+
+    The button swaps itself out for this response, so the list grows in
+    place. ``after`` is the previous batch's cursor, and pinned reviews
+    are excluded, so no review appears twice. Open to everyone, so it
+    doesn't use the sign-in-only ``ReviewEndpointMixin``; a product deleted
+    since the page loaded still gets an inline alert in the button's place.
+    """
+
+    def get(self, request, pk):
+        product = Product.objects.filter(pk=pk).first()
+        if product is None:
+            response = render(
+                request,
+                "reviews/partials/_alert.html",
+                {"message": "This product is no longer available."},
+                status=HTTPStatus.NOT_FOUND,
+            )
+            response["HX-Retarget"] = "#review-more"
+            response["HX-Reswap"] = "outerHTML"
+            return response
+        batch = product.reviews.excluding(*pinned_reviews(request.user, product)).batch(
+            after=request.GET.get("after")
+        )
+        return render(
+            request,
+            "reviews/partials/_review_batch.html",
+            {"product": product, "batch": batch},
+        )
