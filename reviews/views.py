@@ -23,7 +23,9 @@ from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views import View, csrf
+from django.views.generic import ListView
 
+from accounts.mixins import StaffRequiredMixin
 from products.models import Product
 
 from .forms import ReviewForm
@@ -331,14 +333,21 @@ class CancelDeleteView(ReviewObjectMixin, View):
         return self.render_card(self.get_review())
 
 
-def pinned_reviews(user, product) -> list[Review]:
+def pinned_reviews(user, product, highlight=None) -> tuple[Review | None, ...]:
     """The reviews pinned above the list, which batches must leave out.
 
-    For now, the viewer's own review: it sits in the form slot.
+    The viewer's own review (it sits in the form slot), then the review
+    the ``highlight`` value (a ``?review=`` parameter) names. Either may be
+    ``None``; a highlight of the viewer's own review is ``None``, so it
+    shows once. Highlighting changes what's shown, never who may act.
     """
-    if not user.is_authenticated:
-        return []
-    return list(Review.objects.filter(user=user, product=product))
+    own = None
+    if user.is_authenticated:
+        own = Review.objects.filter(user=user, product=product).first()
+    highlighted = product.reviews.highlighted(highlight)
+    if highlighted == own:
+        highlighted = None
+    return own, highlighted
 
 
 class ShowMoreReviewsView(View):
@@ -346,7 +355,8 @@ class ShowMoreReviewsView(View):
 
     The button swaps itself out for this response, so the list grows in
     place. ``after`` is the previous batch's cursor, and pinned reviews
-    are excluded, so no review appears twice. Open to everyone, so it
+    (``review`` names the highlighted one) are excluded, so no review
+    appears twice. Open to everyone, so it
     doesn't use the sign-in-only ``ReviewEndpointMixin``; a product deleted
     since the page loaded still gets an inline alert in the button's place.
     """
@@ -363,11 +373,31 @@ class ShowMoreReviewsView(View):
             response["HX-Retarget"] = "#review-more"
             response["HX-Reswap"] = "outerHTML"
             return response
-        batch = product.reviews.excluding(*pinned_reviews(request.user, product)).batch(
+        own, highlighted = pinned_reviews(
+            request.user, product, request.GET.get("review")
+        )
+        batch = product.reviews.excluding(own, highlighted).batch(
             after=request.GET.get("after")
         )
         return render(
             request,
             "reviews/partials/_review_batch.html",
-            {"product": product, "batch": batch},
+            {"product": product, "batch": batch, "highlighted_review": highlighted},
         )
+
+
+class ManageReviewListView(StaffRequiredMixin, ListView):
+    """The back office's read-only Reviews tab: every review, newest first.
+
+    Staff-only, so rows may show usernames. Each row links to the review
+    highlighted on its product page, where staff moderate it with the
+    inline controls; there are no edit or delete screens here.
+    """
+
+    template_name = "reviews/manage_reviews.html"
+    context_object_name = "reviews"
+    paginate_by = 20
+    extra_context = {"section": "reviews"}
+
+    def get_queryset(self):
+        return Review.objects.newest_first().select_related("product")

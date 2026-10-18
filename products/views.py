@@ -12,7 +12,7 @@ from django.views.generic import (
 )
 
 from accounts.mixins import StaffRequiredMixin
-from reviews.views import form_slot_context
+from reviews.views import form_slot_context, pinned_reviews
 
 from .forms import CategoryForm, ProductForm, TagForm
 from .models import Category, Product, Tag
@@ -65,7 +65,11 @@ class CategoryView(CatalogView):
 
 
 class ProductDetailView(DetailView):
-    """A single product at its slug URL, with its Reviews section."""
+    """A single product at its slug URL, with its Reviews section.
+
+    ``?review=<pk>`` (the back office's links) pins that review below the
+    viewer's own, highlighted; a bad id is ignored.
+    """
 
     template_name = "products/detail.html"
     context_object_name = "product"
@@ -76,10 +80,15 @@ class ProductDetailView(DetailView):
         slot = form_slot_context(self.request.user, self.object)
         context.update(slot)
         context["review_summary"] = self.object.reviews.summary()
-        # The viewer's own review is pinned in the form slot, not listed;
-        # the rest come ten at a time, with "Show more" for the next ten.
+        # The viewer's own review is pinned in the form slot and the
+        # highlighted one heads the list; the rest come ten at a time,
+        # with "Show more" for the next ten.
+        _, highlighted = pinned_reviews(
+            self.request.user, self.object, self.request.GET.get("review")
+        )
+        context["highlighted_review"] = highlighted
         context["review_batch"] = self.object.reviews.excluding(
-            slot["own_review"]
+            slot["own_review"], highlighted
         ).batch()
         return context
 
@@ -127,6 +136,12 @@ class ManageProductDeleteView(StaffRequiredMixin, SuccessMessageMixin, DeleteVie
     success_url = reverse_lazy("products:manage_products")
     success_message = "Product deleted."
     extra_context = {"section": "products"}
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Reviews cascade with the product; the page says how many.
+        context["review_count"] = self.object.reviews.count()
+        return context
 
 
 class ManageCatalogView(StaffRequiredMixin, TemplateView):

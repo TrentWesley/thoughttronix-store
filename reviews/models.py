@@ -17,6 +17,7 @@ from products.models import Product
 COMMENT_MIN_LENGTH = 10
 COMMENT_MAX_LENGTH = 2000
 REVIEWS_PER_BATCH = 10
+MAX_PK = 2**63 - 1  # the largest id the database can hold
 
 
 class Eligibility(models.TextChoices):
@@ -106,6 +107,17 @@ class ReviewQuerySet(models.QuerySet):
             reviews=rows[:REVIEWS_PER_BATCH], has_more=len(rows) > REVIEWS_PER_BATCH
         )
 
+    def highlighted(self, value: str | None) -> "Review | None":
+        """The review a ``?review=`` value names, or ``None`` if there isn't one.
+
+        Missing, non-numeric, out-of-range, and deleted ids are all just
+        ``None``. Called on a product's reviews, another product's review
+        is ``None`` too.
+        """
+        if not value or not value.isdecimal() or not 0 < int(value) <= MAX_PK:
+            return None
+        return self.select_related("user").filter(pk=int(value)).first()
+
     def editable_by(self, user):
         """The reviews ``user`` may edit or delete: staff any, others their own.
 
@@ -183,6 +195,10 @@ class Review(models.Model):
 
     def __str__(self):
         return f"{self.rating}★ {self.product} by {self.user}"
+
+    def get_absolute_url(self):
+        """This review on its product page, highlighted and scrolled to."""
+        return f"{self.product.get_absolute_url()}?review={self.pk}#review-{self.pk}"
 
     @property
     def display_name(self) -> str:

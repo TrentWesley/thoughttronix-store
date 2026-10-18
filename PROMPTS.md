@@ -28,6 +28,50 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-18 — Product Reviews Phase 6: back-office Reviews tab, highlighting, and the delete-count warning (TDD)
+
+### Prompts
+1. "Read @prd/product-reviews.md and @plans/product-reviews.md. Implement ONLY Phase 6 — Staff Moderation, following the exact requirements and acceptance criteria in the plan. First check git status and preserve all completed Phase 1–5 work. Follow RED → GREEN TDD: write and run failing tests before implementing the feature. Reuse the existing Django, HTMX, and Tailwind/DaisyUI patterns. Preserve all existing functionality, including review permissions, pagination, and CSRF handling. Run the complete pytest suite, Ruff checks, Django system checks, and migration checks. Update PROMPTS.md with the Phase 6 prompts, RED/GREEN results, deviations, and sideways issues. Provide an implementation summary and step-by-step manual browser testing instructions. STOP for my approval before committing, pushing, or starting Phase 7. Do not commit db.sqlite3." (run right after a `/clear`)
+2. "I approve Product Reviews Phase 6 — Staff Moderation. Manual browser testing passed for signed-out and customer access restrictions, staff Reviews tab, review highlighting, Show More without duplicates, staff editing and canceling, deleting a highlighted review, invalid review links, and the product deletion warning. The warning displayed 15 reviews at the time it was checked, and Seraphine was not deleted. Cleanup removed 15 temporary accounts and 14 remaining temporary reviews; Seraphine is back to 1 review. Do not claim the optional empty-state or own-review manual scenarios were tested. Update PROMPTS.md with these accurate results. Rerun the full pytest suite, Ruff lint and format checks, Django system check, and migration check. If all checks pass, commit Phase 6 as 'Complete Product Reviews Phase 6' and push to origin/main. Do not commit db.sqlite3 or start Phase 7. Verify git status and report the commit hash."
+
+### Summary
+- **Outcome:**
+  - **Starting state:** `git status` showed only `db.sqlite3` modified. Phases 1–5 (`823c7e3`…`e86cbbb`) were untouched.
+  - **Exploration:** the agent read the PRD, the plan, `reviews/models.py`, `views.py`, `urls.py`, `ProductDetailView` and `ManageProductDeleteView`, `products/detail.html`, the back-office shell, `orders/manage_orders.html` (as the list pattern), the card, form, slot, batch, Show more, and stars partials, `reviews/test_show_more.py`, and the `conftest.py` fixtures.
+  - **RED:** 38 tests in two new modules:
+    - `reviews/test_backoffice.py` (18): the URL name and path; anonymous → sign-in, customer → 403, staff → 200 with `section == "reviews"`; an active Reviews tab (inactive elsewhere); the empty state; the agreed columns (product, username, stars, an excerpt rather than the whole comment, date); autoescaping; newest first; every product including unavailable ones; pagination at 20; rows linking to `?review=<pk>#review-<pk>`; no Edit/Delete controls and no POST; and the product delete page's review count (3, 1, and none).
+    - `reviews/test_highlight.py` (20): the highlighted review pinned in a `#review-highlight` wrapper at the top of the list, once; no wrapper without the parameter; an old review beyond the first ten still pinned, with the first batch still ten others; exclusion from every batch and from a cursorless Show more; pinned below the viewer's own review; own and highlighted being the same appearing once; staff controls on it but no extra permissions for a customer; signed-out display rules; and empty, non-numeric, decimal, negative, zero, overflowing, and `%00` ids, another product's review, and a deleted review all ignored, on the page and on Show more.
+
+    The first run: **24 failed, 14 passed**, for the expected reasons (`NoReverseMatch` for `reviews:manage_reviews`, 404s at `/backoffice/reviews/`, no highlight wrapper, no count text). One passing guard, `test_show_more_keeps_excluding_the_highlighted_review`, was too weak: it highlighted the oldest review, which a cursorless batch wouldn't include anyway. It was changed to highlight the newest one, and failed as expected: **25 failed, 13 passed** in all. The 13 that passed are guards the current code already meets (bad ids ignored, no wrapper without a parameter, no controls on a 404 page).
+  - **GREEN:**
+    - `reviews/models.py`: `ReviewQuerySet.highlighted(value)` turns a `?review=` value into a review or `None` (only decimal ids from 1 to 2⁶³−1, so an overflowing id never reaches SQLite). Called on `product.reviews`, it ignores other products' reviews. `Review.get_absolute_url()` returns the product URL with `?review=<pk>#review-<pk>`.
+    - `reviews/views.py`: `pinned_reviews(user, product, highlight=None)` now returns `(own, highlighted)`, with the highlight dropped when it's the viewer's own review. `ShowMoreReviewsView` excludes both and passes `highlighted_review` on, so each new button keeps `&review=<pk>`. New `ManageReviewListView` (`StaffRequiredMixin` + `ListView`, 20 per page, `section = "reviews"`).
+    - `reviews/urls.py`: `reviews:manage_reviews` at `backoffice/reviews/`.
+    - `products/views.py`: `ProductDetailView` adds `highlighted_review` and excludes it from the first batch. `ManageProductDeleteView` adds `review_count`.
+    - Templates: new `reviews/manage_reviews.html` (the orders list's table, pagination, and empty-state pattern); a Reviews tab in `backoffice/base.html`; the highlight wrapper at the top of `#review-list` in `products/detail.html`; `&review=` on the Show more URL; the count line on the product delete confirmation.
+    - Checks (rerun before the commit with the same results): **592 passed** (554 + 38). `ruff check` clean; `ruff format --check` clean after formatting `reviews/test_highlight.py`; `manage.py check` no issues; `makemigrations --check --dry-run` no changes (no model fields changed). `tailwind build --force` compiled the new `*:ring-*` and `rating-xs` classes.
+  - **Manual verification** (prompt 2): the dev database has only 3 reviews, so the agent wrote a scratchpad helper that adds 15 throwaway reviews to Seraphine, plus a one-line cleanup, and the user ran both. The user reported these checks as passing:
+    - signed-out visitors and customers are kept out of the Reviews tab
+    - the staff Reviews tab
+    - review highlighting
+    - Show more without duplicates
+    - staff editing and cancelling
+    - deleting a highlighted review
+    - invalid review links
+    - the product delete warning, which showed 15 reviews when checked (Seraphine was not deleted)
+
+    The optional empty-state check and the own-review-link check were **not** done by hand; only the automated tests cover them. Cleanup removed the 15 temporary accounts and the 14 temporary reviews still left (one had been deleted during testing). The agent confirmed that no `phase6_` users remain and that Seraphine has 1 review again.
+  - **Commit** (prompt 2): the agent reran every check (the results are below) and committed the phase as `Complete Product Reviews Phase 6`, pushed to `origin/main`. `db.sqlite3` was left out, as instructed.
+- **Deviations:**
+  - The highlight ring sits on the wrapper's *child* (Tailwind's `*:` variant), not on the card. Edit, Cancel, and the delete confirmation swap the card by its `#review-<pk>` id, so the ring follows whatever replaces it, and a staff delete leaves an empty wrapper with nothing visible. No "linked review" label was added, for the same reason.
+  - The highlighted review heads `#review-list` rather than getting a section of its own, which puts it directly below the form slot (and so below the viewer's own review).
+  - The delete confirmation also says "No reviews will be deleted." when there are none, rather than hiding the line.
+  - As in earlier phases, the user ran the browser checklist and the data cleanup themselves.
+  - The back-office list's rows link from the product name, and also show stars with the existing `_stars.html` partial, at `rating-xs`.
+- **Sideways:**
+  - The first star assertion in the RED tests guessed the wrong `aria-label` ("2 out of 5 stars"); the partial says "Rated 2 out of 5". It was corrected before the RED run.
+  - As in Phase 5, editing with Python left LF working-copy line endings in the touched files; git normalizes them, so the diff is unaffected.
+
 ## 2026-10-18 — Product Reviews Phase 5: Show more reviews (TDD)
 
 ### Prompts

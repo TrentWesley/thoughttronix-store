@@ -71,6 +71,14 @@
       {% include "reviews/partials/_form_slot.html" %}
     </div>
     <div id="review-list" class="mt-6 flex flex-col gap-4">
+      {% if highlighted_review %}
+        {# Linked from the back office: pinned below the viewer's own review. #}
+        {# The ring sits on the wrapper's child, so it follows the card through #}
+        {# its edit form and delete confirmation, and leaves with it. #}
+        <div id="review-highlight" class="*:ring-2 *:ring-primary *:ring-offset-2 *:ring-offset-base-200">
+          {% include "reviews/partials/_review_card.html" with review=highlighted_review %}
+        </div>
+      {% endif %}
       {% include "reviews/partials/_review_batch.html" with batch=review_batch %}
     </div>
   </section>

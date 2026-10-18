@@ -1,0 +1,70 @@
+{% extends "backoffice/base.html" %}
+
+{% block title %}Reviews — Back office{% endblock %}
+
+{# Read-only: each row links to the review highlighted on its product page, #}
+{# where staff moderate it with the inline Edit and Delete controls. #}
+{% block backoffice %}
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-4">
+    <h2 class="text-xl font-semibold">
+      {{ page_obj.paginator.count }} review{{ page_obj.paginator.count|pluralize }}
+    </h2>
+    <p class="text-sm opacity-60">Open a review to edit or delete it on its product page.</p>
+  </div>
+
+  {% if reviews %}
+    <div class="overflow-x-auto rounded-box bg-base-100 shadow-md">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Author</th>
+            <th>Rating</th>
+            <th>Comment</th>
+            <th>Posted</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for review in reviews %}
+            <tr>
+              <td>
+                <a href="{{ review.get_absolute_url }}"
+                   class="link-hover font-semibold">{{ review.product.name }}</a>
+              </td>
+              <td class="font-mono text-sm">{{ review.user.username }}</td>
+              <td>{% include "reviews/partials/_stars.html" with value=review.rating size="rating-xs" %}</td>
+              <td class="max-w-md text-sm opacity-80">{{ review.comment|truncatechars:80 }}</td>
+              <td class="whitespace-nowrap">{{ review.created_at|date:"M j, Y" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if is_paginated %}
+      <div class="mt-8 flex justify-center">
+        <div class="join">
+          {% if page_obj.has_previous %}
+            <a href="{% querystring page=page_obj.previous_page_number %}" class="btn join-item">«</a>
+          {% else %}
+            <button class="btn join-item btn-disabled">«</button>
+          {% endif %}
+          <button class="btn join-item pointer-events-none">
+            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+          </button>
+          {% if page_obj.has_next %}
+            <a href="{% querystring page=page_obj.next_page_number %}" class="btn join-item">»</a>
+          {% else %}
+            <button class="btn join-item btn-disabled">»</button>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+  {% else %}
+    <div class="py-16 text-center">
+      <p class="text-5xl">💭</p>
+      <p class="mt-4 text-xl font-semibold">No reviews yet</p>
+      <p class="mt-2 opacity-70">Nobody has shared their thoughts. We'd have noticed.</p>
+    </div>
+  {% endif %}
+{% endblock %}
