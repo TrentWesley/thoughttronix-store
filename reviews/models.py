@@ -50,6 +50,16 @@ class ReviewQuerySet(models.QuerySet):
         """Leave out the given (pinned) reviews; ``None`` entries are skipped."""
         return self.exclude(pk__in=[review.pk for review in reviews if review])
 
+    def editable_by(self, user):
+        """The reviews ``user`` may edit or delete: staff any, others their own.
+
+        Authorship alone decides — not eligibility — so a review stays the
+        author's to change after its order is cancelled.
+        """
+        if user.is_staff:
+            return self
+        return self.filter(user=user)
+
     def eligibility(self, user, product) -> Eligibility:
         """May ``user`` write a review of ``product``? If not, why not.
 
@@ -132,3 +142,15 @@ class Review(models.Model):
         if not last:
             return first
         return f"{first} {last[0]}."
+
+    def record_edit(self, editor) -> None:
+        """Mark this review as edited by ``editor`` (unsaved).
+
+        Every edit sets ``edited_at``. An edit by anyone but the author —
+        staff, since only they can reach someone else's review — sets
+        ``edited_by_staff_at``; the author's own edit clears it, because
+        the words are theirs again.
+        """
+        now = timezone.now()
+        self.edited_at = now
+        self.edited_by_staff_at = None if editor.pk == self.user_id else now

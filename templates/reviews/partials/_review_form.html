@@ -1,15 +1,22 @@
-{# The review form, posted in place: the response replaces #review-form-slot. #}
-{# Invalid input comes back here with field errors and what was typed. #}
-{# Stars are DaisyUI rating radios; the hidden first radio is "no rating yet". #}
-{# novalidate: the server's field errors are the single source of feedback. #}
-<form hx-post="{% url 'reviews:create' product.pk %}"
+{# The review form, posted in place, for both create and edit. #}
+{# Create: the response replaces #review-form-slot. Edit (the form's review #}
+{# is saved): the form stands in for card #review-<pk>, which Save and #}
+{# Cancel swap back. Invalid input comes back here with field errors and #}
+{# what was typed. Stars are DaisyUI rating radios; the hidden first radio #}
+{# is "no rating yet". novalidate: the server's field errors are the single #}
+{# source of feedback. #}
+{% with editing=form.instance.pk %}
+<form {% if editing %}id="review-{{ editing }}"
+      hx-post="{% url 'reviews:update' editing %}"
+      hx-target="this"
+      hx-swap="outerHTML"{% else %}hx-post="{% url 'reviews:create' product.pk %}"
       hx-target="#review-form-slot"
-      hx-swap="innerHTML"
+      hx-swap="innerHTML"{% endif %}
       hx-disabled-elt="find button[type='submit']"
       class="card bg-base-100 shadow-sm"
       novalidate>
   <div class="card-body gap-4">
-    <h3 class="card-title text-lg">Write a review</h3>
+    <h3 class="card-title text-lg">{% if editing %}Edit review{% else %}Write a review{% endif %}</h3>
 
     <fieldset class="fieldset">
       <legend class="fieldset-legend">{{ form.rating.label }}</legend>
@@ -34,7 +41,17 @@
     </fieldset>
 
     <div class="card-actions justify-end">
-      <button type="submit" class="btn btn-primary">Post review</button>
+      {% if editing %}
+        <button type="button"
+                class="btn btn-ghost"
+                hx-get="{% url 'reviews:cancel_edit' editing %}"
+                hx-target="#review-{{ editing }}"
+                hx-swap="outerHTML">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      {% else %}
+        <button type="submit" class="btn btn-primary">Post review</button>
+      {% endif %}
     </div>
   </div>
 </form>
+{% endwith %}

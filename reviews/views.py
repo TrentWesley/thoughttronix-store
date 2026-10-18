@@ -21,6 +21,7 @@ from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 from django.views import View
 
 from products.models import Product
@@ -160,3 +161,93 @@ class CreateReviewView(ReviewEndpointMixin, View):
                 "oob_summary": True,
             },
         )
+
+
+class ReviewObjectMixin(ReviewEndpointMixin):
+    """For endpoints acting on one review: ownership is enforced by the lookup.
+
+    Customers fetch only from their own reviews and staff from all of them,
+    so someone else's review, or one deleted in another tab, is a 404 —
+    an inline alert that replaces the affected card.
+    """
+
+    alert_swap = "outerHTML"
+
+    def get_alert_target(self):
+        return f"#review-{self.kwargs['pk']}"
+
+    def product_url(self):
+        """The review's product page, or the catalog if the review is gone."""
+        review = (
+            Review.objects.select_related("product")
+            .filter(pk=self.kwargs["pk"])
+            .first()
+        )
+        if review is None:
+            return reverse("products:catalog")
+        return review.product.get_absolute_url()
+
+    def get_review(self) -> Review:
+        return get_object_or_404(
+            Review.objects.editable_by(self.request.user).select_related(
+                "user", "product"
+            ),
+            pk=self.kwargs["pk"],
+        )
+
+    def render_card(self, review, **extra) -> HttpResponse:
+        return render(
+            self.request,
+            "reviews/partials/_review_card_response.html",
+            {"review": review, **extra},
+        )
+
+    def render_form(self, form) -> HttpResponse:
+        return render(
+            self.request,
+            "reviews/partials/_review_form.html",
+            {"product": form.instance.product, "form": form},
+        )
+
+    def edit_form(self, review, data=None) -> ReviewForm:
+        # A per-review id prefix, so this form's labels never collide with
+        # the create form or another card's edit form on the same page.
+        return ReviewForm(
+            data,
+            instance=review,
+            editor=self.request.user,
+            auto_id=f"id_review_{review.pk}_%s",
+        )
+
+
+class EditReviewView(ReviewObjectMixin, View):
+    """HTMX GET: swap a card for the review form, prefilled. Changes nothing."""
+
+    def get(self, request, pk):
+        return self.render_form(self.edit_form(self.get_review()))
+
+
+class UpdateReviewView(ReviewObjectMixin, View):
+    """HTMX POST: save an edit and return the card, with the summary OOB.
+
+    The form records the edit (and whether staff made it). Invalid input
+    re-renders the form with field errors.
+    """
+
+    def post(self, request, pk):
+        review = self.get_review()
+        self.product = review.product
+        form = self.edit_form(review, request.POST)
+        if not form.is_valid():
+            return self.render_form(form)
+        review = form.save()
+        return self.render_card(
+            review, review_summary=self.product.reviews.summary(), oob_summary=True
+        )
+
+
+class CancelEditView(ReviewObjectMixin, View):
+    """HTMX GET: put the unchanged card back in place of the edit form."""
+
+    def get(self, request, pk):
+        return self.render_card(self.get_review())

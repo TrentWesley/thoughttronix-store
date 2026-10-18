@@ -28,6 +28,33 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-18 — Product Reviews Phase 3: editing reviews in place, with edit tracking (TDD)
+
+### Prompts
+1. "Read @prd/product-reviews.md and @plans/product-reviews.md. Implement ONLY Phase 3: Editing reviews in place, including edit tracking. Follow RED → GREEN TDD: write and run failing tests before implementation. Reuse the HTMX error-handling infrastructure from Phase 2. Run the full pytest suite, Ruff checks, migration checks, and Django system checks. Provide manual browser verification steps and STOP for my approval before committing, pushing, or starting Phase 4. Do not modify or commit db.sqlite3." (run right after a `/clear`)
+2. "I approve Product Reviews Phase 3. All nine manual browser tests passed. Please rerun all automated checks, document the Phase 3 session in PROMPTS.md, commit with the message 'Complete Product Reviews Phase 3', and push to origin/main. Verify git status afterward. Do not commit db.sqlite3 or start Phase 4."
+
+### Summary
+- **Outcome:**
+  - **Exploration** (prompt 1): the agent read the Phase 2 `reviews` model, form, views, URLs, all six partials, `reviews/test_create.py`, `ProductDetailView`, `products/detail.html`, the template context processors, and `conftest.py`.
+  - **RED** (prompt 1): 30 new tests in `reviews/test_edit.py`. They cover Edit-button visibility (author, staff, other customer, signed out), the edit/update/cancel partials, the OOB summary, invalid input, method restrictions, all five edit-tracking cases plus "no change is not an edit" and the form's save path, 404 alerts with `HX-Retarget: #review-<pk>`/`HX-Reswap: outerHTML` for another customer and for a deleted review, editing after the order is cancelled and on an unavailable product, and signed-out redirects. The run showed **29 failed, 1 passed**, all for the expected reasons: missing `reviews:edit`/`update`/`cancel_edit` routes (NoReverseMatch, 26), no `editor` argument on `ReviewForm` (TypeError, 2), and no staff label on cards (1). The passing test was the "new review has no Edited label" guard.
+  - **GREEN** (prompt 1):
+    - `reviews/models.py`: `ReviewQuerySet.editable_by(user)` (staff get every review, others their own) and `Review.record_edit(editor)`, which sets `edited_at` and sets or clears `edited_by_staff_at` by comparing the editor with the author.
+    - `reviews/forms.py`: `ReviewForm` takes `editor=` and calls `record_edit` in `save()`, only for an existing review that actually changed.
+    - `reviews/views.py`: `ReviewObjectMixin`, built on Phase 2's `ReviewEndpointMixin`. It does the ownership lookup, aims 404 alerts at `#review-<pk>` with `outerHTML`, and sends signed-out users back to the review's product page (or the catalog if the review is gone). Also `EditReviewView`, `UpdateReviewView`, and `CancelEditView`, routed in `reviews/urls.py`.
+    - Templates: `_review_form.html` gained an edit mode (keyed on `form.instance.pk`) with Save and Cancel and per-review field ids. `_review_card.html` gained an Edit button for the author and staff, plus the "Edited" / "Edited by ThoughtTronix staff" labels. New `_review_card_response.html` returns the card with the optional OOB summary.
+  - **Checks:** 496 passed (466 + 30), ruff check and format clean, `makemigrations --check --dry-run` reported no changes, and `manage.py check` was clean. Rerun before the commit with the same results.
+  - **Manual verification:** the agent wrote nine browser steps (edit, save, cancel, field errors, no Edit on others' reviews, staff label, author re-edit clearing it, a review deleted in another tab, expired session). The user ran them, reported all nine passing, and approved Phase 3 (prompt 2).
+  - **Commit** (prompt 2): `Complete Product Reviews Phase 3`, pushed to `origin/main`. `db.sqlite3` was left out, as instructed.
+- **Deviations:**
+  - The card shows the staff label *instead of* "Edited" rather than both, to avoid a redundant pair. The agent flagged this in its report.
+  - Saving with no actual changes doesn't mark a review as edited. The PRD says the fields are set "whenever an existing review is changed", and the agent took that literally.
+  - A 404 alert on an edit endpoint carries no refreshed summary, because a deleted review leaves no product to summarize. The agent flagged this as well.
+  - As in earlier phases, the user ran the browser checklist themselves.
+- **Sideways:**
+  - At GREEN, one test failed with "Database access not allowed": the signed-out missing-review test had no `db` fixture. The agent added the fixture without changing any assertion.
+  - `ruff format --check` flagged `reviews/test_edit.py` and `reviews/urls.py`, and later `reviews/views.py` after a small tidy of `product_url`. The agent ran `ruff format` on them and re-ran the full suite each time.
+
 ## 2026-10-18 — Product Reviews Phase 2: eligibility, the review form, in-place HTMX creation, and the HTMX error machinery (TDD)
 
 ### Prompts

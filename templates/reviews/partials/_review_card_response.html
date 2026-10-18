@@ -1,0 +1,4 @@
+{# A card swapped back in place (after Save or Cancel). With oob_summary, #}
+{# the refreshed summary rides along out of band. #}
+{% include "reviews/partials/_review_card.html" %}
+{% if oob_summary %}{% include "reviews/partials/_summary.html" with oob=True %}{% endif %}

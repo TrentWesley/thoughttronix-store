@@ -1,9 +1,12 @@
-"""The review form, shared by create and (later) edit, customers and staff.
+"""The review form, shared by create and edit, customers and staff.
 
 The form owns the input rules: a whole-star rating from 1 to 5, and a
 comment trimmed of surrounding whitespace that must then be 10–2,000
 characters. Who may post, and the one-per-product rule, are enforced by
 ``Review.objects.eligibility`` and the database constraint.
+
+Saving an edit records who made it (``Review.record_edit``), so pass the
+signed-in user as ``editor``.
 """
 
 from django import forms
@@ -36,3 +39,13 @@ class ReviewForm(forms.ModelForm):
     class Meta:
         model = Review
         fields = ["rating", "comment"]
+
+    def __init__(self, *args, editor=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.editor = editor
+
+    def save(self, commit=True):
+        """Save, marking an existing review as edited if anything changed."""
+        if self.instance.pk and self.editor is not None and self.has_changed():
+            self.instance.record_edit(self.editor)
+        return super().save(commit=commit)
