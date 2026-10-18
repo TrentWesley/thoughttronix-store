@@ -1,5 +1,31 @@
 # Reflection
 
+## Product Reviews
+
+### Question 1
+
+One example of TDD in my Product Reviews project was `test_an_author_edit_clears_the_staff_label` in `reviews/test_edit.py`, line 272. This test was created during Phase 3 to make sure that when a customer edits their review after a staff member has edited it, the "Edited by ThoughtTronix staff" label disappears while the regular "Edited" label remains. The test simulates this situation, submits an HTMX request, and checks both the database timestamps and the updated HTML. This was important because the website needed to accurately show who was responsible for changes to a review.
+
+I followed the RED → GREEN TDD process by testing the functionality before implementing it. Initially, 29 of the 30 Phase 3 tests failed because parts of the editing functionality were missing. After implementing the necessary code, all 496 project tests passed. This helped me understand that testing involves more than checking whether a feature works visually. It also requires verifying that the database and application logic behave correctly. I also learned that passing tests do not guarantee every requirement is covered, since the final PRD audit revealed an additional issue with how editing labels were displayed.
+
+### Question 2
+
+One important part of my Product Reviews project was making sure customers could only delete their own reviews, while staff members could delete any review. In `reviews/models.py`, lines 121–129, the `editable_by()` method filters reviews based on the logged-in user. The deletion view in `reviews/views.py`, lines 221–227 and 298–330, uses this method to check authorization before deleting anything. If a customer attempts to delete someone else's review, Django returns a 404 error instead of allowing the deletion.
+
+This was important because simply hiding the Delete button would not provide enough security. Someone could still try to access the deletion URL directly. The test `test_another_customer_gets_404_for_the_delete_and_the_review_stays` in `reviews/test_delete.py`, line 294, verifies that unauthorized attempts fail and the review remains in the database. I learned that authorization needs to be enforced through the application's backend rather than relying only on what users can see on the website.
+
+### Question 3
+
+In my Product Reviews project, I used HTMX to allow customers to submit reviews without refreshing the entire page. In `templates/reviews/partials/_review_form.html`, lines 8–17, the form uses `hx-post` to send the review to Django and `hx-target` to identify which part of the page should update. The request is handled by `CreateReviewView` in `reviews/views.py`, lines 159–194, which checks the customer's eligibility, validates the form, and saves the review.
+
+After the review is saved, Django returns an HTML partial that replaces the form with the customer's new review. The rating summary also updates using `hx-swap-oob` in `templates/reviews/partials/_summary.html`, line 2. This allows both sections to update without reloading the page. The test in `reviews/test_create.py`, lines 208–226, verifies that the review is saved and the updated HTML is returned. This helped me understand how HTMX and Django work together to create a smoother user experience.
+
+### Question 4
+
+One important decision I made during `/grill-me` was deciding who should be allowed to leave product reviews. I chose to only allow customers with a DELIVERED order to post a review instead of allowing anyone who had placed an order. This decision is documented in `PROMPTS.md`, line 514, and `prd/product-reviews.md`, line 24. I chose this option because I wanted reviews to come from customers who had actually received their products.
+
+The tradeoff was that customers would have to wait until their orders were marked as delivered before leaving a review. This also made testing more complicated because test customers needed delivered orders. This decision helped me understand how choosing stricter requirements can improve the reliability of a feature while also adding limitations for users.
+
 ## Account Security Center
 
 ### Question 1
