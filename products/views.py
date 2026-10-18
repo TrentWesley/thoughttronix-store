@@ -64,11 +64,17 @@ class CategoryView(CatalogView):
 
 
 class ProductDetailView(DetailView):
-    """A single product at its slug URL."""
+    """A single product at its slug URL, with its Reviews section."""
 
     template_name = "products/detail.html"
     context_object_name = "product"
     queryset = Product.objects.select_related("category").prefetch_related("tags")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["review_summary"] = self.object.reviews.summary()
+        context["reviews"] = self.object.reviews.newest_first()
+        return context
 
 
 # --- The back office --------------------------------------------------------

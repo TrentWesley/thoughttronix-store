@@ -13,8 +13,9 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from PIL import Image
 
 from coupons.models import Coupon
-from orders.models import Cart, CartItem
+from orders.models import Cart, CartItem, Order, OrderItem
 from products.models import Category, Product, Tag
+from reviews.models import Review
 
 
 @pytest.fixture(autouse=True)
@@ -143,3 +144,70 @@ def product_coupon(product):
     coupon = Coupon.objects.create(code="HUB20", percent_off=20)
     coupon.products.add(product)
     return coupon
+
+
+@pytest.fixture
+def delivered_order(db):
+    """Build an order for one product: ``delivered_order(user, product)``.
+
+    Delivered by default; pass ``status=Order.Status.SHIPPED`` (or any
+    other status) for the cases that must not count.
+    """
+
+    def build(user, product, *, status=Order.Status.DELIVERED, quantity=1):
+        line_total = product.price * quantity
+        order = Order.objects.create(
+            user=user,
+            status=status,
+            subtotal=line_total,
+            total=line_total,
+            email="casey@example.com",
+            shipping_name="Casey Monroe",
+            shipping_street="9 Synapse Court",
+            shipping_city="Canyon",
+            shipping_state="TX",
+            shipping_zip="79015",
+            billing_name="Casey Monroe",
+            billing_street="9 Synapse Court",
+            billing_city="Canyon",
+            billing_state="TX",
+            billing_zip="79015",
+            card_last4="4242",
+        )
+        OrderItem.objects.create(
+            order=order,
+            product=product,
+            product_name=product.name,
+            unit_price=product.price,
+            quantity=quantity,
+        )
+        return order
+
+    return build
+
+
+@pytest.fixture
+def make_review(db):
+    """Build a review: ``make_review(user, product, rating=4, comment=...)``.
+
+    ``created_at`` may be passed to backdate it.
+    """
+
+    def build(user, product, *, rating=4, comment="Does what it says.", **extra):
+        return Review.objects.create(
+            user=user, product=product, rating=rating, comment=comment, **extra
+        )
+
+    return build
+
+
+@pytest.fixture
+def named_customer(db):
+    """A customer with a full name, a distinctive username, and an email."""
+    return get_user_model().objects.create_user(
+        username="mwren_login",
+        password="margaret123",
+        email="margaret.wren@example.com",
+        first_name="Margaret",
+        last_name="Wren",
+    )

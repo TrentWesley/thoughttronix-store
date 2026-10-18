@@ -28,6 +28,249 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-18 — Product Reviews Phase 1: tracer bullet, reviews app and read-only Reviews section (TDD)
+
+### Prompts
+1. "Read @prd/product-reviews.md and @plans/product-reviews.md. Implement ONLY Phase 1 of the Product Reviews plan. Follow the plan's TDD workflow strictly: 1. Inspect the existing code and relevant patterns. 2. Write Phase 1 tests first and run them to demonstrate RED failures for the expected reasons. 3. Implement only enough code to make those tests pass (GREEN). 4. Run the full test suite, Ruff lint and format checks, and migration checks. 5. Provide instructions for manual browser verification. 6. STOP and wait for my approval before committing, pushing, or starting Phase 2. Do not implement later phases. Do not commit or push without my approval." (run right after a `/clear`)
+2. "uv run python manage.py migrate / uv run python manage.py tailwind runserver"
+3. "List the usernames of existing Django superusers in my ThoughtTronix database. Do not display or change passwords, create accounts, or modify any data. Do not change application code."
+4. "wait dont"
+5. "The manual browser checks for the empty Reviews state and a successful five-star review on Seraphine passed. The page displays 5.0 out of 5, 1 review, Casey M., and the Verified purchase badge correctly. Help me complete the remaining Phase 1 manual verification checks, including admin validation, escaping, unavailable products, and safe test-product deletion. Do not commit, push, or start Phase 2 until I approve."
+6. "I approve Product Reviews Phase 1. The manual browser checks passed, including review display, validation, privacy, unavailable products, and product deletion cascading to reviews. Please rerun the full automated checks, document this Phase 1 session in PROMPTS.md, then commit the Phase 1 changes with the message 'Complete Product Reviews Phase 1' and push to origin. Verify git status afterward. Do not start Phase 2."
+
+### Summary
+- **Outcome:**
+  - **Exploration** (prompt 1): the agent read the settings, root URLs, `conftest.py`, the product views and detail template, the order, product, coupon, and user models, the existing admin classes, and the test helpers that build orders. It ran the suite first to get a baseline (351 passed).
+  - **RED** (prompt 1): to keep RED failures about behavior rather than import errors, the agent first scaffolded a bare `reviews` app. It had the `Review` fields and FKs only, with no constraints, validators, manager, display name, admin, or templates. Then it wrote 44 tests in `reviews/tests.py` (model, constraints, validation, cascades, display name, queryset, admin) and `reviews/test_product_page.py` (the Reviews section). It added three shared fixtures to `conftest.py`: `delivered_order`, `make_review`, and `named_customer`. The run showed **37 failed, 7 passed**. The failures were the expected ones: `DID NOT RAISE` for duplicates and ratings of 0 and 6, no length validation, missing `display_name`/`summary`/`newest_first`, `Review` missing from the admin, and no Reviews section on the page. The 7 that passed were cascades, order-line history, accepted comment lengths, and blank edit timestamps, which the scaffold's FKs and fields already satisfied.
+  - **GREEN** (prompt 1):
+    - `reviews/models.py`: `Review` with rating choices 1–5, comment `MinLengthValidator(10)`/`MaxLengthValidator(2000)`, a backdatable `created_at`, `auto_now` `updated_at`, nullable `edited_at`/`edited_by_staff_at`, the `unique_review_user_product` and `review_rating_1_to_5` constraints, and the `display_name` property ("Margaret W." / "Margaret" / "Verified customer"). `ReviewQuerySet` has `newest_first()` and `summary()`, a single `Avg`/`Count` aggregate returning a `ReviewSummary` whose `stars` rounds half up.
+    - `reviews/admin.py`: `ReviewAdmin`, with the bookkeeping timestamps read-only.
+    - The scaffold migration was deleted, since it was never applied, and regenerated as one clean `reviews/migrations/0001_initial.py`.
+    - `ProductDetailView` adds `review_summary` and `reviews` through `product.reviews`, so `products/` gains no Python import of `reviews`.
+    - `templates/products/detail.html` gets a Reviews section, with new partials `_summary.html` (with a designed "No reviews yet" empty state), `_review_card.html` (with the `review-<pk>` anchor and the Verified purchase badge, `linebreaksbr` on an autoescaped comment), and `_stars.html` (read-only DaisyUI stars).
+  - **Checks:** 395 passed (351 plus 44), ruff check and format clean, `makemigrations --check` reported no changes, and `manage.py check` was clean. They were rerun before the commit with the same results.
+  - **Dev server** (prompt 2): `migrate` applied `reviews.0001_initial`, and also `accounts.0002_email_ci_unique`, which the dev database had been missing since the Account Security Center. The server ran in the background.
+  - **Superuser lookup** (prompt 3): a read-only shell query found one superuser, `admin`. No passwords were shown and no data was changed.
+  - **Manual verification** (prompts 5–6): the user confirmed the empty state and a 5★ review by Casey M. on Seraphine. The agent looked up the real users and reviews (read-only) and wrote a step-by-step checklist: admin validation (9 characters, duplicate, rating dropdown), `<script>`/`<b>` escaping and line breaks, newest-first order, privacy searches, a signup-created `phase1tester` for "Verified customer" plus the user-delete cascade, a review on the unavailable SoulSear Mark I viewed signed out, and a throwaway "Phase 1 Test Gadget" product deleted to check the review cascade. The user reported that all checks passed and approved Phase 1.
+  - **Commit** (prompt 6): `Complete Product Reviews Phase 1`, pushed to `origin`. It includes the previously untracked `prd/product-reviews.md` and `plans/product-reviews.md`, plus the PROMPTS.md entries for the grilling, PRD, and plan sessions, because those entries refer to the two files.
+- **Deviations:**
+  - The plan forbids RED failures caused by import errors, so the agent added a scaffold step before the tests that the user's prompt didn't mention. That left 7 tests passing at RED, and the agent reported them instead of contriving them to fail.
+  - Prompt 2 was two bare commands with no instruction. The agent took it as a request to run them, and ran `migrate` and then the server in the background.
+  - Prompt 4 ("wait dont") arrived after the superuser query had already finished. The agent stopped, confirmed that nothing else was running and that the query was read-only, and asked what to hold off on. The user moved on to the browser checks in prompt 5.
+  - The plan says the agent runs the browser checklist and reports what it observed. The user asked for instructions instead and did the checks in the browser themselves.
+  - `db.sqlite3` is gitignored but tracked since the "database and media snapshot for grading" commit. Its working copy had changed because of the migrations and the user's manual test reviews. The agent left it out of the Phase 1 commit rather than overwrite the grading snapshot, and flagged it for the user.
+- **Sideways:**
+  - The first browser instructions used `/products/seraphine-home-hub/`, a slug from the test fixtures and not from the seed, and the agent's smoke test got 404s. It listed the seeded slugs (`seraphine`, `soulsear-mark-i`, and so on) and corrected the checklist.
+  - The Tailwind watch process quit immediately when run in the background ("Stopped watching for changes"), so the new `rating`/`mask-star-2` classes weren't compiled. Plain `tailwind build` reported "up to date" and still left the classes out; `tailwind build --force` produced them. The agent told the user that the watcher only works in their own terminal.
+  - Ruff format reformatted one line in `reviews/models.py` after GREEN. The tests were rerun afterward and stayed green.
+
+## 2026-10-18 — Product Reviews: /prd-to-plan, nine-phase proposal merged to seven, plans/product-reviews.md written
+
+### Prompts
+1. "/prd-to-plan @prd/product-reviews.md" (run right after a `/clear`)
+2. "Keep the overall tracer-bullet approach, but merge proposed Phases 2 and 3 so eligibility, the form, and HTMX review creation work end-to-end in one phase. Move the proposed Phase 7 HTMX error-handling infrastructure into that merged phase, so later edit and delete endpoints reuse it. Keep the remaining phases separate, resulting in approximately 7–8 phases. Every phase must follow TDD (RED tests before GREEN implementation), automated checks, manual browser verification, my approval before proceeding, and a commit/push after approval. Do not implement anything yet. Write the plan to plans/product-reviews.md."
+3. "Add an entry to PROMPTS.md documenting this /prd-to-plan session. Include the original seven-to-nine-phase proposal, my request to merge eligibility and creation and move HTMX error handling earlier, the final seven-phase plan, and any deviations or issues. Follow the existing PROMPTS.md format. Do not implement code or commit yet."
+
+### Summary
+- **Outcome:**
+  - **Exploration** (prompt 1): the agent read the PRD and the saved product-reviews design notes. It looked at the project layout, the root and app URL files, `INSTALLED_APPS`, the cart's HTMX views, the template partials, the base template, the back-office tab rail, `LOGIN_URL`, the pagination sizes, and the layout of `plans/account-security.md`.
+  - **Original proposal** (prompt 1): **nine** vertical slices. The header decisions were:
+    - a new `reviews` app (namespace `reviews:`) that depends on `products` and `orders`
+    - the `Review` model, its cascades and constraints
+    - the rules kept in `ReviewQuerySet`, plus one `Order` delivered-orders queryset method
+    - no service module and no signals
+    - pk URLs for review actions, the back-office list under `/backoffice/reviews/`, and the product page's slug URL kept
+
+    The nine phases were:
+    1. Tracer bullet: reviews appear on the product page
+    2. Who may review: eligibility and the form slot
+    3. Posting a review in place
+    4. Editing in place, with edit tracking
+    5. Deleting in place
+    6. Show more reviews
+    7. HTMX failure handling: the head block, the page-scoped `htmx-config`, the alert partial, 403/404 responses with `HX-Retarget`/`HX-Reswap`, and `HX-Redirect`
+    8. Back-office Reviews tab and highlighting
+    9. Demo world and definition of done
+
+    The agent flagged two choices: whether error handling should come after the create, edit, and delete phases or be built into creation, and whether Phases 2 and 3 should be merged. It then asked about granularity.
+  - **The user's changes** (prompt 2):
+    - Merge Phases 2 and 3 into one end-to-end create phase.
+    - Move Phase 7's error handling into that merged phase, so later edit and delete endpoints reuse it.
+    - Keep the other phases separate.
+    - Require in every phase: TDD (RED before GREEN), automated checks, manual browser verification, the user's approval before going on, and a commit and push after approval.
+  - **Final plan:** `plans/product-reviews.md`, in the `/prd-to-plan` template. The header holds the architectural decisions, an indicative URL table for the nine `reviews:` routes, and a six-step workflow shared by every phase:
+    1. RED tests, shown failing for the expected reason
+    2. GREEN implementation
+    3. pytest, ruff check, and ruff format check, plus `makemigrations --check` when models change
+    4. a browser checklist
+    5. stop for approval
+    6. commit (`Complete Product Reviews Phase N`), push to `origin`, and log the session in PROMPTS.md
+
+    The seven phases are:
+    1. Tracer bullet: reviews appear on the product page (stories 1–6, 9, 10, 13–15, 58, 62, 63)
+    2. Writing a review in place: eligibility, form, creation, and HTMX error handling (16–35, 59, 60)
+    3. Editing in place, with edit tracking (11, 12, 36–41, 46–49, 61)
+    4. Deleting in place (42–45, 50)
+    5. Show more reviews (7, 8)
+    6. Back-office Reviews tab, highlighting, and the delete-count warning (51–57)
+    7. Demo world and definition of done (64–70)
+
+    Each phase lists its user stories, what to build, and acceptance criteria. The criteria include a RED-first check, the browser checks, and "approval received, committed and pushed."
+  - The agent also updated its own saved notes on the feature (outside the repository) to record that the PRD and the seven-phase plan exist and that each phase follows the TDD and approval workflow.
+  - No application code, tests, or migrations were written, and no tests were run; only read-only inspection commands were run. Nothing was committed or pushed. `plans/product-reviews.md`, `prd/product-reviews.md`, and the uncommitted PROMPTS.md entries (including this one) are pending.
+- **Deviations:**
+  - The user overrode the proposed order on both choices the agent had flagged. Eligibility and creation were merged, and the error handling that had come late (Phase 7) moved into the merged phase. The result is seven phases, at the low end of the "approximately 7–8" the user asked for.
+  - The user added the TDD, browser verification, approval, and commit/push workflow. This is stricter than the Account Security Center plan, which had no RED-first step and no push.
+  - Prompt 3 describes the original proposal as "seven-to-nine" phases. The agent actually proposed nine, and seven was the result of the merges.
+- **Sideways:**
+  - Nothing failed. The `/prd-to-plan` skill says to keep revising until the user approves the breakdown. Prompt 2 both set the final structure and asked for the file, so the agent treated it as approval and wrote the plan without showing the merged breakdown again.
+  - The URL path strings in the plan are marked "indicative": the namespace, names, pk use, and `/backoffice/` placement are fixed, but the exact paths may change during implementation. That's a looser commitment than the Account Security Center plan's exact route table.
+  - The agent didn't check whether `Order` already has a custom queryset. The plan only says the delivered-orders check is an `Order` queryset method, so Phase 2 may need to add the queryset first.
+
+## 2026-10-18 — Product Reviews: /to-prd, five PRD clarifications, prd/product-reviews.md finalized
+
+### Prompts
+1. "/to-prd" (no arguments; run in the same conversation right after the 2026-10-17 `/grill-me` interview and its PROMPTS.md entry)
+2. "I approve all five PRD clarifications: update README demo notes; seed an existing demo customer review while leaving the Authorization Case and DreamWeaver unreviewed; display only the first name when no last name exists; recheck current eligibility after deleting a review; and keep the listed extra features out of scope. Please finalize prd/product-reviews.md accordingly. Do not implement code yet."
+3. "Add an entry to PROMPTS.md documenting this /to-prd session, including the prompts, the completed prd/product-reviews.md, the five clarifications, and any deviations or problems encountered. Follow the existing PROMPTS.md format. Do not change application code."
+
+### Summary
+- **Outcome:**
+  - Before writing, the agent read the structure and style of `prd/account-security.md`, and checked the add-to-cart partial, the back-office tab rail, the base template's blocks, and the product delete confirmation template.
+  - Prompt 1 wrote `prd/product-reviews.md` in the `/to-prd` template, without interviewing the user, matching the Account Security Center PRD's layout.
+    - **Problem Statement and Solution:** written from the shopper's, customer's, and staff member's points of view.
+    - **User stories:** 70, grouped into:
+      - reading reviews
+      - reviewer privacy
+      - who can write
+      - writing
+      - editing
+      - deleting
+      - staff moderation
+      - failures and edge cases
+      - demo and development
+    - **Implementation Decisions:** sections for:
+      - owning app and architecture
+      - model and database
+      - eligibility and query logic
+      - forms
+      - views and behavior
+      - HTMX error handling
+      - URLs
+      - templates and UI
+      - admin
+      - seed data
+      - testing
+      - definition of done
+    - **Out of Scope** and **Further Notes:** the next-of-kin reasoning, why "Verified customer" is used, the add-to-cart 404 edge case under the page-scoped HTMX config, and the dashboard effect of the seed.
+  - Every decision approved in the `/grill-me` entry below was carried into the PRD.
+  - After the draft, the agent pointed out five places where it had filled gaps the interview hadn't settled. Prompt 2 approved all five:
+    1. The README's demo notes describe the review demo data (the interview had named only CLAUDE.md).
+    2. The demo customer has at least one review already seeded, while DreamWeaver and the SoulSear Authorization Case stay unreviewed.
+    3. A customer with a first name but no last name shows as the first name alone ("Margaret").
+    4. After an author deletes their own review, the form slot re-checks their current eligibility. They see the form if they still have a delivered order, or the not-eligible message if it was cancelled since.
+    5. Extra features never discussed are kept as explicit Out of Scope boundaries: replies, helpful votes, photos, flagging, a "My reviews" page, email notifications, and review rate limiting.
+  - Finalizing after prompt 2:
+    - Clarifications 1, 2, 4, and 5 were already in the draft.
+    - Clarification 3 was added to the display-name rule, story 13, and the display-name test.
+    - A "slot after delete" test was added to the testing list.
+    - The seed wording was tightened to name DreamWeaver and the Authorization Case explicitly as unreviewed.
+  - No application code, tests, migrations, or plan were written, and only read-only inspection commands were run. Nothing was committed: `prd/product-reviews.md`, the 2026-10-17 entry, and this entry are all uncommitted.
+- **Deviations:**
+  - None from recommendations. Prompt 2 accepted all five clarifications as proposed.
+  - The README update and the explicit Out of Scope items came from the agent rather than the interview. They were flagged for review instead of being added silently, and approved in prompt 2.
+- **Sideways:**
+  - The first draft listed a test for "customers without a last name" but never said what such a customer should display. The agent caught this when reviewing its own draft and raised it as clarification 3.
+  - The first draft described the demo customer's open review slots loosely ("other delivered products (such as DreamWeaver) unreviewed"). After prompt 2, the wording was tightened to match the approved clarification exactly.
+  - One edit while finalizing failed because the agent quoted the wrong anchor text ("the delete confirmation" instead of "the product delete confirmation"). It retried with the correct text, and the PRD wasn't affected.
+  - The calendar date changed from 2026-10-17 to 2026-10-18 between the draft (prompt 1) and finalizing (prompt 2). This entry uses the later date.
+
+## 2026-10-17 — Product Reviews: /grill-me design interview (23 questions plus one follow-up), design approved
+
+### Prompts
+1. "/grill-me ThoughtTronix needs a product review system. Each customer can leave one review per purchased product, including a rating and written comment. Only verified purchasers can review products, including SoulSear products; next of kin cannot. Customers can edit and delete only their own reviews. Staff can edit and delete any review. Creating, editing, and deleting reviews must update smoothly without a full-page reload or losing the customer's place. Ask me design questions one at a time, using existing project patterns when useful. Do not write code or documentation yet."
+2. "Option A. Only the original purchaser can leave a review. Next of kin cannot review unless they purchased the product themselves. No additional relationship model is needed. Include a test for this rule."
+3. "Option B. Only customers with a DELIVERED order containing the product can leave a review. PLACED, SHIPPED, and CANCELLED orders do not qualify. Apply this rule on the server and include tests for each order status."
+4. "Option A. Verify purchase eligibility only when the review is created. Existing reviews remain if the order status changes later. Customers can still edit or delete their own reviews, and staff can edit or delete any review. Include a test confirming that a review survives cancellation."
+5. "Option A. Use required whole-star ratings from 1 to 5, displayed with DaisyUI rating stars. Enforce the valid range in the model, form, and database using a CheckConstraint. No half-star or zero-star ratings."
+6. "Option A. Use a required TextField with a minimum of 10 characters and maximum of 2,000. Trim leading and trailing whitespace, reject blank or whitespace-only comments, and enforce length limits in both model and form validation. Display comments safely using Django's autoescaping."
+7. "Option A. Create a separate reviews app with its own models, views, URLs, templates, partials, and tests. Use the reviews URL namespace and follow the existing ThoughtTronix project conventions. Update INSTALLED_APPS and CLAUDE.md as needed during implementation."
+8. "Option A. Use a custom ReviewQuerySet/manager to centralize review eligibility checks, including authentication, a DELIVERED purchase, and preventing duplicate reviews. Add a reusable Order queryset method for delivered purchases containing a product. Follow the existing CLAUDE.md conventions and keep the logic easy to test."
+9. "Option A. Display and manage reviews inline on the product detail page using HTMX. Customers can create, edit, and delete their own reviews without a full-page reload or losing their scroll position. Staff can edit and delete any review. Use reusable partial templates and follow the existing cart HTMX patterns."
+10. "Option A. Show clear messages based on eligibility. Signed-out visitors get a sign-in link, customers without a delivered purchase see an explanation, eligible customers see the review form, and customers who already reviewed see their own review with edit/delete controls. Staff can moderate any review but must have a qualifying purchase to create their own. Enforce all eligibility and authorization rules on the server."
+11. "Option A. Use an inline HTMX confirmation swap before deleting reviews. Clicking Delete displays a DaisyUI-styled confirmation with Confirm Delete and Cancel buttons. Confirm Delete uses POST to delete the review and update the review section and summary without a full-page reload. Cancel restores the original review card. Enforce ownership and staff permissions server-side for both confirmation and deletion."
+12. "Option A. Display the average star rating and total review count at the top of the product detail page's Reviews section. Calculate these using Django's Avg and Count aggregation. Use HTMX out-of-band swaps to update the summary automatically after creating, editing, or deleting reviews. Show 'No reviews yet' when there are no reviews. Keep catalog cards unchanged."
+13. "Option A. Pin the signed-in customer's own review at the top, then display other reviews newest first. Show 10 other reviews initially and use an HTMX 'Show more reviews' button to load additional batches of 10 without a full-page reload or losing scroll position. Use Django's Paginator, exclude the pinned review from paginated results, and prevent duplicate reviews when loading more."
+14. "Option B. Add a staff-only, read-only Reviews tab in the existing back office. Display all reviews newest first with pagination, showing the product, author, rating, comment excerpt, and date. Each review should link to its product page, where staff can edit or delete it using the existing inline HTMX controls. Use StaffRequiredMixin, follow existing back-office conventions, and avoid duplicating CRUD views. Register Review in Django admin for superuser access as well."
+15. "Option A. Use ?review=<pk>#review-<pk> links from the back office to highlight and pin the selected review on its product page. Place it below the viewer's own pinned review, exclude both pinned reviews from pagination to prevent duplicates, and apply a subtle DaisyUI highlight. Ignore invalid, deleted, or wrong-product review IDs. Keep all edit/delete permissions enforced server-side, and test the edge cases."
+16. "Option A. Track created_at and updated_at timestamps and display an Edited label when a review changes. Add a nullable edited_by_staff_at field to identify when staff modify another customer's review. Display 'Edited by ThoughtTronix staff' when applicable. Clear the staff-edit indicator if the original author subsequently edits the review. Keep authorization and edit tracking enforced server-side, and include tests for customer edits, staff edits, and clearing the indicator."
+17. "Option A. Use on_delete=models.CASCADE for both Review.product and Review.user. Deleting a product or customer permanently deletes their associated reviews. Update the existing product delete confirmation page to show the number of reviews that will also be deleted. Preserve the existing OrderItem.product SET_NULL behavior so order history remains intact. Include tests for both cascade behaviors."
+18. "Option A. Product availability should not affect review eligibility. Customers with a DELIVERED order can create reviews for unavailable or discontinued products, including the SoulSear Mark I. Existing reviews remain visible, and customers can still edit or delete their own reviews. Staff retain moderation permissions. Do not include is_available in the eligibility check. Add a test confirming that a verified purchaser can review an unavailable product."
+19. "Option A. Update the seed command to create approximately 15–25 realistic reviews, each backed by a DELIVERED order from its author. Include at least one product with more than 10 reviews to demonstrate HTMX pagination and one staff-edited review. Give the demo customer a delivered order for the $39 SoulSear Authorization Case but leave their review slot open for demonstration. Avoid expensive SoulSear orders that would distort dashboard revenue. Keep the seed idempotent and ensure tests do not depend on running the seed command."
+20. "Option A. Add 4–5 reviewer-only background customers and create deterministic, low-priced DELIVERED orders for a showcase product. Seed at least 12–13 reviews on that product so the HTMX Show more reviews button works in the demo, including when the demo customer is signed in. Keep paginate_by = 10, enforce one review per customer per product, preserve seed idempotency, and minimize the impact on dashboard revenue. Include tests for pagination and review eligibility."
+21. "Option A. Handle HTMX review failures gracefully. Re-render invalid forms with field errors using a 200 response. For forbidden or missing reviews, preserve the correct 403/404 HTTP status codes and use HTMX response headers such as HX-Retarget and HX-Reswap to display a DaisyUI inline alert. For expired sessions, use HX-Redirect to the sign-in page with a next parameter returning to the product. Keep all authorization checks server-side, avoid extra JavaScript or dependencies, and add tests for validation errors, unauthorized requests, missing reviews, and expired sessions."
+22. "Option A. Use page-scoped HTMX responseHandling configuration so 403 and 404 responses can display inline DaisyUI alerts while retaining their real HTTP status codes. Keep other pages' behavior unchanged, use HX-Retarget and HX-Reswap on review error responses, and test the status codes, alert content, and unchanged data. Verify that the configuration is recognized by HTMX 2 and that the alerts actually swap in the browser."
+23. "Option A. Display each reviewer's first name and last initial, such as 'Margaret W.', falling back to their username when no first name exists. Never display email addresses or full last names on public review cards. Add a 'Verified purchase' badge to every review. Keep the display-name logic in a reusable model property or method, and test missing-name cases."
+24. "Option A. Use hx-disabled-elt to disable the submit button while an HTMX request is in progress. Enforce one review per user per product with a database UniqueConstraint. Use transaction.atomic() and safely catch duplicate-review IntegrityError exceptions, returning the customer's existing review with a friendly notice instead of a 500 error. Ensure the transaction remains usable after the exception. Include tests for duplicate submissions and race conditions."
+25. "Option A. Display the customer's first name and last initial when available, such as 'Margaret W.'. If the customer has no first name, display 'Verified customer' instead of their username. Never expose login usernames, email addresses, or full last names on public review cards. Keep the Verified purchase badge and add tests for both named and unnamed customers. This replaces the username fallback chosen in Question 21."
+26. "I approve the design. Staff may see usernames in the staff-only back-office Reviews tab, but public reviews must never expose usernames or emails. Keep edited_at and edited_by_staff_at consistent with the agreed edit-tracking rules. The design interview is complete. Do not implement anything yet."
+27. "Before moving on, add an accurate entry to PROMPTS.md documenting this completed /grill-me Product Reviews design interview. Follow the existing PROMPTS.md format and include the actual design decisions and session details. Do not modify application code yet."
+
+### Summary
+- **Outcome:**
+  - The `/grill-me` interview asked 23 numbered questions plus one follow-up (Q20b), each answered by prompts 2–25. Before asking, the agent read the seed command, `orders/models.py`, the order and product views and URLs, the product detail template, the existing HTMX templates, `accounts/mixins.py`, `accounts/forms.py`, `dashboard/queries.py`, and the vendored `assets/js/htmx.min.js`. It used what it found to frame questions or answer them directly. Only read-only inspection commands were run.
+  - The interview settled the design for a new `reviews` app:
+    - **Who can review:**
+      - Only the user on a `DELIVERED` order containing the product can review it. "Next of kin" needs no model; it's a test case for "didn't buy it."
+      - Eligibility is checked only at creation, so a review survives its order later being cancelled. `is_available` is ignored, so the recalled SoulSear Mark I can be reviewed.
+      - Staff moderate any review but need a qualifying purchase to write one.
+    - **Model:**
+      - `Review(user, product, rating, comment, created_at, updated_at, edited_at, edited_by_staff_at)`. Both foreign keys use `CASCADE`, and `UniqueConstraint(user, product)` enforces one review per product.
+      - `rating`: 1–5 whole stars, enforced in the model choices, the form, and a database `CheckConstraint`.
+      - `comment`: a trimmed `TextField` of 10 to 2,000 characters, validated in the model and the form, shown autoescaped.
+      - `edited_at` drives the "Edited" label. `edited_by_staff_at` is set when the editor isn't the author and cleared when the author edits.
+    - **Logic placement:**
+      - A `ReviewQuerySet`/manager holds `eligibility(user, product)` with its reasons, the `Avg`/`Count` summary, and the listing helpers.
+      - A reusable `Order` queryset method finds delivered orders containing a product.
+      - No service module, so the deep modules stay at two.
+    - **Product page (HTMX only):**
+      - A summary block with "No reviews yet," refreshed through out-of-band swaps.
+      - The form slot shows one of four states, by eligibility.
+      - The viewer's own review is pinned first, then any `?review=<pk>` highlighted review, then others newest first. `paginate_by = 10` with a "Show more reviews" button, and both pinned reviews are left out of pagination.
+      - Inline edit. Delete goes through an inline confirmation: Confirm Delete (POST) or Cancel.
+      - A "Verified purchase" badge on every card.
+    - **Errors:**
+      - Invalid forms re-render with a 200.
+      - 403/404 responses keep their real status and show a DaisyUI alert, aimed with `HX-Retarget`/`HX-Reswap`. A `<meta name="htmx-config">` `responseHandling` tag, scoped to the product page through a new empty `{% block head %}` in `base.html`, lets those responses swap.
+      - Expired sessions get `HX-Redirect` to sign-in with `?next=`.
+      - Ownership is enforced by the lookup (the cart pattern). Double submits are blocked by `hx-disabled-elt`, plus an `IntegrityError` caught in a nested `atomic()` that returns the existing review with a notice.
+    - **Public identity:** "First L." or "Verified customer." No usernames, emails, or full last names on public cards. The staff-only back-office tab may show usernames.
+    - **Back office:**
+      - A read-only, paginated Reviews tab (`StaffRequiredMixin`, a `section` entry, an empty state) that links to `?review=<pk>#review-<pk>`.
+      - The product delete confirmation shows how many reviews will also be deleted.
+      - `Review` is registered in the Django admin.
+    - **Seed:**
+      - 15–25 reviews, each backed by a delivered order.
+      - 4–5 reviewer-only customers with deterministic, low-priced delivered orders for one showcase product carrying 12–13 reviews.
+      - One staff-edited review.
+      - The demo `customer` gets a delivered order for the $39 SoulSear Authorization Case, with the review slot left open.
+      - The seed stays idempotent, and tests never call it.
+    - **Verification:** pytest cases for every rule above, plus a real browser check that HTMX 2 honors the page-scoped config and the error alerts swap in.
+  - Prompt 26 approved the design.
+  - No application code, tests, migrations, PRD, or plan were written, and nothing was committed. This entry is the only repository change, and it's uncommitted.
+  - Outside the repository, the agent also saved a short note about the approved design to its own Claude Code memory directory, without being asked.
+- **Deviations:**
+  - Every numbered question took the agent's recommended option.
+  - Prompt 25 (Q23) reversed prompt 23's username fallback in favor of "Verified customer." This came after the agent reported that signup collects no first name.
+  - Prompt 21 (Q20) chose to keep real 403/404 status codes with `HX-Retarget`/`HX-Reswap`. The recommendation had left room for either that or a 200 response with the alert.
+  - Prompt 26 confirmed two refinements the agent had added after answers. One is the `edited_at` field, replacing the `created_at`-vs-`updated_at` comparison in prompt 16. The other is usernames being allowed in the staff-only back-office tab.
+  - Prompts 20, 22, and 25 answered follow-up questions the agent raised to fix problems with earlier answers (see Sideways).
+- **Sideways:** four recommendations had flaws that only surfaced after the user had answered. In each case the agent caught its own mistake and raised a follow-up question; none reached code.
+  - **Q15 (edit tracking):** the recommended "Edited when `updated_at` differs from `created_at`" would have labeled every new review "Edited." That's because `default=timezone.now` and `auto_now` can differ by microseconds on the first save. The agent proposed a separate nullable `edited_at` along with Q16, and prompt 26 confirmed it.
+  - **Q18 (seed):** the agent recommended "at least one product with more than 10 reviews" without counting the seeded users. Only 10 exist (9 background customers plus `customer`), and with one review per user per product, the requirement couldn't be met. Background orders are also random, so reviews couldn't rely on them. The agent raised Q19, and prompt 20 added reviewer-only customers with deterministic orders.
+  - **Q20 (HTMX errors):** the agent recommended using `HX-Retarget`/`HX-Reswap` to show alerts on 403/404 responses before checking how HTMX 2 behaves. After the answer, it inspected the vendored `htmx.min.js` and found that HTMX's default `responseHandling` doesn't swap 4xx responses, and those headers can't override that. As written, the alerts would never have appeared. It raised Q20b, and prompt 22 chose the page-scoped meta config. Prompt 22 also asked for browser verification that the fix works.
+  - **Q21 (display name):** the agent recommended a username fallback without checking `accounts/forms.py`. Afterwards it found that `SignupForm` collects only username and email. Every customer who signs up through the site would therefore have shown their login username publicly, which undercut the privacy reasoning behind Q21. It raised Q23, and prompt 25 replaced the fallback with "Verified customer."
+
 ## 2026-10-11 — Account Security Center Phase 6: demo readiness, documentation, final PRD audit
 
 ### Prompts

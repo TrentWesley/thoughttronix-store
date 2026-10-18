@@ -1,0 +1,6 @@
+{# Read-only DaisyUI stars. Expects ``value`` (1–5): stars after it are dimmed. #}
+<div class="rating {{ size|default:'rating-sm' }} pointer-events-none" role="img" aria-label="Rated {{ value }} out of 5">
+  {% for star in "12345" %}
+    <div class="mask mask-star-2 bg-warning" aria-hidden="true"{% if forloop.counter == value %} aria-current="true"{% endif %}></div>
+  {% endfor %}
+</div>

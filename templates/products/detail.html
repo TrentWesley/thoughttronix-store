@@ -57,4 +57,14 @@
       {% endif %}
     </div>
   </div>
+
+  <section id="reviews" class="mt-12 max-w-3xl">
+    <h2 class="mb-4 text-2xl font-bold">Reviews</h2>
+    {% include "reviews/partials/_summary.html" %}
+    <div id="review-list" class="mt-6 flex flex-col gap-4">
+      {% for review in reviews %}
+        {% include "reviews/partials/_review_card.html" %}
+      {% endfor %}
+    </div>
+  </section>
 {% endblock %}

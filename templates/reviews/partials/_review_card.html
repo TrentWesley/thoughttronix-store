@@ -1,0 +1,13 @@
+<article id="review-{{ review.pk }}" class="card bg-base-100 shadow-sm">
+  <div class="card-body gap-3">
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      {% include "reviews/partials/_stars.html" with value=review.rating %}
+      <span class="badge badge-success badge-outline badge-sm">Verified purchase</span>
+    </div>
+    <p class="whitespace-normal break-words">{{ review.comment|linebreaksbr }}</p>
+    <p class="text-sm opacity-70">
+      <span class="font-semibold">{{ review.display_name }}</span>
+      · <time datetime="{{ review.created_at|date:'c' }}">{{ review.created_at|date:"F j, Y" }}</time>
+    </p>
+  </div>
+</article>

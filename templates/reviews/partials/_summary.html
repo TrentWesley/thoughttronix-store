@@ -1,0 +1,16 @@
+<div id="review-summary">
+  {% if review_summary.count %}
+    <div class="flex flex-wrap items-center gap-3">
+      {% include "reviews/partials/_stars.html" with value=review_summary.stars size="rating-md" %}
+      <span class="text-lg font-semibold">{{ review_summary.average|floatformat:1 }} out of 5</span>
+      <span class="opacity-70">{{ review_summary.count }} review{{ review_summary.count|pluralize }}</span>
+    </div>
+  {% else %}
+    <div class="rounded-box border border-dashed border-base-content/20 p-8 text-center">
+      <p class="text-lg font-semibold">No reviews yet</p>
+      <p class="mt-1 text-sm opacity-70">
+        Customers who have received this product can share what it was like. Your thoughts are our business.
+      </p>
+    </div>
+  {% endif %}
+</div>
