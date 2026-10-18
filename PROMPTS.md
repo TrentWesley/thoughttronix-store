@@ -28,6 +28,57 @@ Each entry has this shape:
     - **Deviations:** recommendations overridden, follow-up questions asked
     - **Sideways:** failures, wrong turns, and how they were caught
 
+## 2026-10-18 — Product Reviews Phase 4: deleting reviews in place, plus a stale-CSRF fix for review actions (TDD)
+
+### Prompts
+1. "Read @prd/product-reviews.md and @plans/product-reviews.md. Implement ONLY Phase 4 of the Product Reviews plan: deleting reviews. Follow RED → GREEN TDD, writing and running failing tests before implementation. Reuse the existing HTMX infrastructure and follow the exact Phase 4 requirements in the plan. Run the full pytest suite, Ruff checks, migration checks, and Django system checks. Provide manual browser verification steps and STOP for my approval before committing, pushing, or starting Phase 5. Do not commit db.sqlite3." (run right after a `/clear`)
+2. "Phase 4 manual browser Test 5 failed. I opened a review's Delete confirmation, deleted that review through Django Admin in another tab, then clicked Confirm Delete in the original tab without refreshing. Instead of the expected 'This review is no longer available.' HTMX alert, Django returned 403 CSRF verification failed: CSRF token from the X-Csrftoken HTTP header incorrect. A similar error occurred earlier during Test 2. Investigate whether login/logout CSRF token rotation and the page-scoped HTMX CSRF configuration cause this. Follow RED → GREEN TDD for any fix, run all automated checks, and explain how to retest. Do not commit, push, or start Phase 5. Do not commit db.sqlite3."
+3. "I approve the current CSRF fix and its wording. Keep the inline session-changed alert rather than automatic refreshing. The project-wide CSRF_FAILURE_VIEW setting is acceptable because the custom behavior is restricted to review HTMX endpoints and all other requests retain Django's default behavior. Do not commit or push yet. We will finish manual Phase 4 testing first."
+4. "I approve Product Reviews Phase 4. All 6 manual browser tests passed, including the stale-review deletion test and expired-session redirect. Keep the approved CSRF fix. Rerun the complete automated test suite, Ruff checks, Django system checks, and migration checks. Update PROMPTS.md with the Phase 4 work, RED/GREEN testing, CSRF issue and fix, and manual verification results. Commit the Phase 4 changes with the message 'Complete Product Reviews Phase 4' and push to origin/main. Do not commit db.sqlite3. Verify the final git status. Do not start Phase 5."
+
+### Summary
+- **Outcome:**
+  - **Exploration** (prompt 1): the agent read the PRD, the plan, the Phase 3 `reviews` views, model, form, URLs, all seven partials, `reviews/test_edit.py`, the Reviews section of `products/detail.html`, and the `conftest.py` fixtures.
+  - **RED, delete** (prompt 1): 21 new tests in `reviews/test_delete.py`. They cover:
+    - Delete-button visibility, the confirmation GET (partial, text, `hx-disabled-elt`, nothing deleted), Cancel, and method restrictions.
+    - Staff deleting another customer's review: an empty body plus the OOB summary, and "No reviews yet" after the last one.
+    - The author's form slot after a delete: the form when still eligible, the not-eligible message after the order is cancelled. Also staff deleting their own review, and deleting after the order is cancelled.
+    - 404 alerts for another customer and for an already-deleted review, and signed-out redirects.
+
+    The first run had **21 failed**, all with `NoReverseMatch` for the three missing route names. For a sharper RED, the agent routed them to empty view classes and re-ran: **15 failed** on behavior (405 instead of 200/404, no Delete button, no OOB summary, review still present). 6 passed: the guards that the existing mixin and 405 defaults already satisfy.
+  - **GREEN, delete** (prompt 1):
+    - `reviews/views.py`: `DeleteConfirmView`, `DeleteReviewView`, and `CancelDeleteView`, all built on Phase 3's `ReviewObjectMixin`, so ownership is enforced by the lookup and 404s go through the Phase 2 alert machinery.
+      - Staff deleting someone else's review get only the OOB summary. The empty body swaps over the card and removes it.
+      - When the author deletes their own (pinned) review, the response re-renders `_form_slot.html` from `form_slot_context` and retargets `#review-form-slot` with `innerHTML`.
+    - `reviews/urls.py`: `reviews:delete_confirm`, `reviews:delete`, `reviews:cancel_delete`.
+    - Templates: a Delete button on `_review_card.html` (author and staff only), and a new `_delete_confirm.html`. It's a DaisyUI confirmation under the card's `review-<pk>` id, with "Delete this review? This can't be undone.", Cancel, and Confirm Delete.
+    - Checks: 517 passed, ruff clean after `ruff format`, no migrations, `manage.py check` clean.
+  - **CSRF investigation** (prompt 2): the cause was CSRF token rotation, not the delete code.
+    - `base.html` renders `{{ csrf_token }}` into `hx-headers` once, at page load.
+    - Signing in at another tab calls `rotate_token`: as `admin` for the Django admin in Test 5, and as `employee` for the back office in Test 2. The cookie is shared across tabs, so the open page's token went stale.
+    - `CsrfViewMiddleware` rejects the request before any view runs, so no review lookup happens.
+    - The product page's `htmx-config` swaps 403s, so Django's CSRF error page landed inside the card.
+  - **RED, CSRF** (prompt 2): 8 tests in `reviews/test_csrf.py`, using `Client(enforce_csrf_checks=True)` and a real sign-in through `accounts:login`. A characterization test reproduced the stale-token 403. **4 failed** as expected: Confirm Delete, Confirm Delete on an already-deleted review, Save, and Post review each got a 403 with Django's page and no `HX-Retarget`. 4 passed: the reproduction, "works after a refresh", and the guards that non-HTMX and non-review (cart) requests keep Django's page.
+  - **GREEN, CSRF** (prompt 2): `reviews.views.csrf_failure`, set as `CSRF_FAILURE_VIEW` in `config/settings.py`.
+    - For an HTMX request to a view built on `ReviewEndpointMixin`, it builds that view and returns the view's own inline alert. The alert is a 403 saying "Your session changed in another tab. Refresh the page and try again.", aimed by `HX-Retarget` at the card or the form slot.
+    - Everything else falls through to `django.views.csrf.csrf_failure`. Nothing is CSRF-exempted.
+    - Checks: 525 passed (517 + 8), ruff clean, no migrations, `manage.py check` clean.
+  - **Manual verification:**
+    - The agent revised the retest steps. The stale-session case shows the new alert. To see "This review is no longer available.", the other tab must not sign in again in the same browser: use a second tab as the same user, or a private window.
+    - The user approved the fix and its wording (prompt 3).
+    - The user then reported all six browser tests passing, including the stale-review deletion test and the expired-session redirect, and approved Phase 4 (prompt 4).
+  - **Commit** (prompt 4): reran the full suite (525 passed), ruff check and format, `manage.py check`, and `makemigrations --check --dry-run`, all clean. Committed as `Complete Product Reviews Phase 4` and pushed to `origin/main`. `db.sqlite3` was left out, as instructed.
+- **Deviations:**
+  - The agent offered an `HX-Refresh` auto-reload as an alternative to the inline alert. The user chose the inline alert (prompt 3).
+  - The agent flagged that `CSRF_FAILURE_VIEW` is a project-wide setting, while the PRD rules out site-wide changes to HTMX error handling. The user accepted it, because the custom behavior is limited to review HTMX endpoints (prompt 3).
+  - Test 5's literal expectation ("This review is no longer available.") can't be met when the other tab signs in again, because the CSRF check runs before the review lookup. The user accepted the session-changed alert for that case.
+  - As in earlier phases, the user ran the browser checklist themselves.
+- **Sideways:**
+  - Manual Test 5 failed with a CSRF 403 swapped into the card, and Test 2 had shown a similar error. The Phase 4 checklist hadn't anticipated that signing in at another tab rotates the CSRF token. The suite never caught it, because Django's test client skips CSRF checks by default. The new tests enforce them.
+  - The first RED run failed only on `NoReverseMatch`. The agent added empty stub views to get behavior-level failures before implementing.
+  - `ruff format --check` flagged `reviews/test_delete.py` and `reviews/views.py`, and later `reviews/test_csrf.py`. The agent ran `ruff format` and re-ran the suite.
+  - The agent reminded the user to run `tailwind build --force`, because the confirmation uses Tailwind classes (`btn-error`, `border-error/40`) that no page had used before.
+
 ## 2026-10-18 — Product Reviews Phase 3: editing reviews in place, with edit tracking (TDD)
 
 ### Prompts

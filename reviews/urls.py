@@ -17,4 +17,19 @@ urlpatterns = [
         views.CancelEditView.as_view(),
         name="cancel_edit",
     ),
+    path(
+        "reviews/<int:pk>/delete/",
+        views.DeleteConfirmView.as_view(),
+        name="delete_confirm",
+    ),
+    path(
+        "reviews/<int:pk>/delete/confirm/",
+        views.DeleteReviewView.as_view(),
+        name="delete",
+    ),
+    path(
+        "reviews/<int:pk>/cancel-delete/",
+        views.CancelDeleteView.as_view(),
+        name="cancel_delete",
+    ),
 ]

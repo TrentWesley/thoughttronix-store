@@ -22,7 +22,7 @@ from django.db import IntegrityError, transaction
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
-from django.views import View
+from django.views import View, csrf
 
 from products.models import Product
 
@@ -35,6 +35,31 @@ REFUSALS = {
     ),
     Eligibility.ALREADY_REVIEWED: "You've already reviewed this product.",
 }
+
+STALE_SESSION = "Your session changed in another tab. Refresh the page and try again."
+
+
+def csrf_failure(request, reason=""):
+    """``CSRF_FAILURE_VIEW``: a stale token on a review action gets the alert.
+
+    ``base.html`` renders the CSRF token into ``hx-headers`` at page load,
+    and signing in at another tab rotates it, so an open product page's
+    review actions start failing CSRF. The product page swaps 403s, so
+    Django's error page would land inside a card; instead an HTMX request
+    to a review endpoint gets that endpoint's own inline alert, aimed by
+    ``HX-Retarget``. Nothing else changes: other requests, and anything
+    not from HTMX, get Django's own failure page.
+    """
+    match = request.resolver_match
+    view_class = getattr(match.func, "view_class", None) if match else None
+    is_review_endpoint = view_class is not None and issubclass(
+        view_class, ReviewEndpointMixin
+    )
+    if request.headers.get("HX-Request") != "true" or not is_review_endpoint:
+        return csrf.csrf_failure(request, reason)
+    view = view_class()
+    view.setup(request, *match.args, **match.kwargs)
+    return view.alert(STALE_SESSION, status=HTTPStatus.FORBIDDEN)
 
 
 def form_slot_context(user, product, *, form=None) -> dict:
@@ -248,6 +273,59 @@ class UpdateReviewView(ReviewObjectMixin, View):
 
 class CancelEditView(ReviewObjectMixin, View):
     """HTMX GET: put the unchanged card back in place of the edit form."""
+
+    def get(self, request, pk):
+        return self.render_card(self.get_review())
+
+
+class DeleteConfirmView(ReviewObjectMixin, View):
+    """HTMX GET: swap a card for the inline delete confirmation. Changes nothing."""
+
+    def get(self, request, pk):
+        return render(
+            request,
+            "reviews/partials/_delete_confirm.html",
+            {"review": self.get_review()},
+        )
+
+
+class DeleteReviewView(ReviewObjectMixin, View):
+    """HTMX POST: delete a review, with the summary refreshed out of band.
+
+    Staff removing someone else's review get an empty body, which swaps
+    over the card and removes it. An author's own review is pinned in the
+    form slot, so their response retargets the slot and re-renders it for
+    their eligibility now: a fresh form, or why they can't review again.
+    """
+
+    def post(self, request, pk):
+        review = self.get_review()
+        self.product = review.product
+        own = review.user_id == request.user.pk
+        review.delete()
+        summary = self.product.reviews.summary()
+        if not own:
+            return render(
+                request,
+                "reviews/partials/_summary.html",
+                {"review_summary": summary, "oob": True},
+            )
+        response = render(
+            request,
+            "reviews/partials/_form_slot.html",
+            {
+                **form_slot_context(request.user, self.product),
+                "review_summary": summary,
+                "oob_summary": True,
+            },
+        )
+        response["HX-Retarget"] = "#review-form-slot"
+        response["HX-Reswap"] = "innerHTML"
+        return response
+
+
+class CancelDeleteView(ReviewObjectMixin, View):
+    """HTMX GET: put the unchanged card back in place of the confirmation."""
 
     def get(self, request, pk):
         return self.render_card(self.get_review())

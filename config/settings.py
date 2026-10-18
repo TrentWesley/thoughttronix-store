@@ -102,6 +102,11 @@ LOGIN_REDIRECT_URL = "products:catalog"
 
 LOGOUT_REDIRECT_URL = "products:catalog"
 
+# Signing in rotates the CSRF token, so a tab left open goes stale. Review
+# endpoints answer that HTMX failure with their inline alert; every other
+# request still gets Django's own CSRF failure page.
+CSRF_FAILURE_VIEW = "reviews.views.csrf_failure"
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",

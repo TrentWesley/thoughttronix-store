@@ -1,5 +1,5 @@
-{# One review. Edit appears only for its author and for staff; the server #}
-{# enforces the same rule by its lookup. A staff edit replaces "Edited" #}
+{# One review. Edit and Delete appear only for its author and for staff; #}
+{# the server enforces the same rule by its lookup. A staff edit replaces "Edited" #}
 {# with the staff label, until the author edits again. #}
 <article id="review-{{ review.pk }}" class="card bg-base-100 shadow-sm">
   <div class="card-body gap-3">
@@ -25,6 +25,11 @@
                   hx-get="{% url 'reviews:edit' review.pk %}"
                   hx-target="#review-{{ review.pk }}"
                   hx-swap="outerHTML">Edit</button>
+          <button type="button"
+                  class="btn btn-ghost btn-xs text-error"
+                  hx-get="{% url 'reviews:delete_confirm' review.pk %}"
+                  hx-target="#review-{{ review.pk }}"
+                  hx-swap="outerHTML">Delete</button>
         </div>
       {% endif %}
     </div>

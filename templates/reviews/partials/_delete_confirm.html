@@ -1,0 +1,26 @@
+{# The inline delete confirmation, standing in for card #review-<pk>. #}
+{# Cancel swaps the card back. Confirm Delete posts; the response removes #}
+{# the card (or, for the author, re-renders the form slot) and refreshes #}
+{# the summary out of band. #}
+<article id="review-{{ review.pk }}" class="card border border-error/40 bg-base-100 shadow-sm" role="alertdialog" aria-labelledby="review-{{ review.pk }}-confirm">
+  <div class="card-body gap-4">
+    <div class="flex items-center gap-3">
+      {% include "reviews/partials/_stars.html" with value=review.rating %}
+      <span class="text-sm opacity-70">{{ review.display_name }}</span>
+    </div>
+    <p id="review-{{ review.pk }}-confirm" class="font-semibold">Delete this review? This can't be undone.</p>
+    <div class="card-actions justify-end">
+      <button type="button"
+              class="btn btn-ghost btn-sm"
+              hx-get="{% url 'reviews:cancel_delete' review.pk %}"
+              hx-target="#review-{{ review.pk }}"
+              hx-swap="outerHTML">Cancel</button>
+      <button type="button"
+              class="btn btn-error btn-sm"
+              hx-post="{% url 'reviews:delete' review.pk %}"
+              hx-target="#review-{{ review.pk }}"
+              hx-swap="outerHTML"
+              hx-disabled-elt="this">Confirm Delete</button>
+    </div>
+  </div>
+</article>
